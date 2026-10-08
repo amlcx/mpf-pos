@@ -1,0 +1,7 @@
+node_modules/
+dist/
+target/
+.env
+*.sqlite
+*.sqlite-*
+apps/desktop/src-tauri/gen/

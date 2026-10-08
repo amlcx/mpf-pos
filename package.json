@@ -1,0 +1,18 @@
+{
+  "name": "mpf",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.3.0",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "db:up": "./scripts/dev-db.sh",
+    "db:migrate": "pnpm --filter @mpf/api migrate",
+    "db:seed": "pnpm --filter @mpf/api seed",
+    "dev:api": "pnpm --filter @mpf/api dev",
+    "dev:desktop": "pnpm --filter @mpf/desktop tauri dev",
+    "dev:admin": "pnpm --filter @mpf/admin dev",
+    "build:admin": "pnpm --filter @mpf/admin build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test && cargo test -q -p pos-native"
+  }
+}

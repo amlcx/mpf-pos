@@ -1,0 +1,29 @@
+{
+  "name": "@mpf/desktop",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:web": "vite",
+    "build:web": "vite build",
+    "tauri": "tauri",
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mpf/brand": "workspace:*",
+    "@mpf/shared": "workspace:*",
+    "@tauri-apps/api": "^2.12.1",
+    "valibot": "^1.5.0"
+  },
+  "devDependencies": {
+    "@mpf/api": "workspace:*",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tauri-apps/cli": "^2.12.1",
+    "@types/node": "^24.19.1",
+    "svelte": "^5.57.2",
+    "svelte-check": "^4.7.6",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.3",
+    "vitest": "^5.0.3"
+  }
+}

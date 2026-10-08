@@ -1,0 +1,106 @@
+import type { Product, ReportOrder, StockChange, StockConflict } from '@mpf/shared';
+import type { Sql } from './db.ts';
+
+/**
+ * Operations on one store's data. Callers decide which store the request may
+ * act on (the terminal's own, or one the admin has access to) and pass it in;
+ * nothing here reads a store id from anywhere else.
+ */
+
+const productColumns = (sql: Sql, storeId: string) => sql`
+  p.id, p.name, p.category, p.price_cents, p.track_stock, p.active,
+  case when p.track_stock then coalesce(
+    (select quantity from stock s where s.product_id = p.id and s.store_id = ${storeId}), 0)
+  end as stock_qty`;
+
+export function listProducts(sql: Sql, storeId: string): Promise<Product[]> {
+  return sql<Product[]>`
+    select ${productColumns(sql, storeId)} from products p order by p.category, p.name`;
+}
+
+export async function getProduct(sql: Sql, storeId: string, id: string): Promise<Product | null> {
+  const [product] = await sql<Product[]>`
+    select ${productColumns(sql, storeId)} from products p where p.id = ${id}`;
+  return product ?? null;
+}
+
+/**
+ * Sets or moves a store's quantity of a product and writes the ledger row.
+ * Returns false, changing nothing, if the result would be negative.
+ */
+export async function changeStock(
+  sql: Sql,
+  input: { storeId: string; productId: string; userId: string; change: StockChange },
+): Promise<boolean> {
+  const { storeId, productId, userId, change } = input;
+  return sql.begin(async (tx) => {
+    await tx`insert into stock ${tx({ storeId, productId, quantity: 0 })} on conflict do nothing`;
+    const [row] = await tx<{ quantity: number }[]>`
+      select quantity from stock where store_id = ${storeId} and product_id = ${productId} for update`;
+    const delta = 'delta' in change ? change.delta : change.quantity - row!.quantity;
+    if (delta === 0) return true;
+    if (row!.quantity + delta < 0 && 'delta' in change) return false;
+    await tx`
+      update stock set quantity = quantity + ${delta}
+      where store_id = ${storeId} and product_id = ${productId}`;
+    await tx`insert into stock_movements ${tx({ storeId, productId, delta, reason: 'adjustment', userId })}`;
+    return true;
+  });
+}
+
+/** Orders with from <= createdAt < to, newest first, with lines and payments. */
+export async function listOrders(sql: Sql, storeId: string, from: string, to: string): Promise<ReportOrder[]> {
+  const inRange = sql`o.store_id = ${storeId} and o.created_at >= ${from} and o.created_at < ${to}`;
+  const orders = await sql<Omit<ReportOrder, 'lines' | 'payments'>[]>`
+    select o.id, o.cashier_id, o.ticket_seq, o.ticket_number, o.created_at, o.tax_rate_bps,
+      o.tax_included, o.subtotal_cents, o.tax_cents, o.total_cents, o.status, u.name as cashier_name
+    from orders o join users u on u.id = o.cashier_id
+    where ${inRange} order by o.created_at desc`;
+  const lines = await sql<(ReportOrder['lines'][number] & { orderId: string })[]>`
+    select l.id, l.order_id, l.product_id, l.name, l.unit_price_cents, l.quantity, l.line_total_cents
+    from order_lines l join orders o on o.id = l.order_id where ${inRange} order by l.id`;
+  const payments = await sql<(ReportOrder['payments'][number] & { orderId: string })[]>`
+    select p.id, p.order_id, p.method, p.amount_cents, p.tendered_cents
+    from payments p join orders o on o.id = p.order_id where ${inRange} order by p.id`;
+  const group = <T extends { orderId: string }>(rows: T[]) => {
+    const byOrder = new Map<string, Omit<T, 'orderId'>[]>();
+    for (const { orderId, ...rest } of rows) {
+      const list = byOrder.get(orderId);
+      if (list) list.push(rest);
+      else byOrder.set(orderId, [rest]);
+    }
+    return byOrder;
+  };
+  const linesByOrder = group(lines);
+  const paymentsByOrder = group(payments);
+  return orders.map((o) => ({
+    ...o,
+    lines: linesByOrder.get(o.id) ?? [],
+    payments: paymentsByOrder.get(o.id) ?? [],
+  }));
+}
+
+/** Unresolved offline oversells, oldest first. */
+export function listConflicts(sql: Sql, storeId: string): Promise<StockConflict[]> {
+  return sql<StockConflict[]>`
+    select sc.id, sc.order_id, o.ticket_number, sc.product_id, p.name as product_name,
+      sc.shortfall, sc.created_at
+    from stock_conflicts sc
+    join orders o on o.id = sc.order_id
+    join products p on p.id = sc.product_id
+    where sc.store_id = ${storeId} and sc.resolved_at is null
+    order by sc.created_at`;
+}
+
+/** Accepts an oversell as-is. To undo the sale instead, void the order. */
+export async function resolveConflict(
+  sql: Sql,
+  input: { storeId: string; id: string; userId: string; resolution: string },
+): Promise<boolean> {
+  const rows = await sql`
+    update stock_conflicts set resolved_at = now(), resolved_by = ${input.userId},
+      resolution = ${input.resolution}
+    where id = ${input.id} and store_id = ${input.storeId} and resolved_at is null
+    returning id`;
+  return rows.length > 0;
+}

@@ -1,0 +1,212 @@
+import { relative } from 'node:path';
+import { serveStatic } from '@hono/node-server/serve-static';
+import {
+  type LoginResponse,
+  LoginRequestSchema,
+  ProductInputSchema,
+  ProductPatchSchema,
+  type PullResponse,
+  ReportRangeSchema,
+  StockSetSchema,
+  SubmitOrderRequestSchema,
+  type User,
+  VoidOrderSchema,
+  orderProblems,
+  verifyPassword,
+} from '@mpf/shared';
+import { type Context, Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { HTTPException } from 'hono/http-exception';
+import { sign, verify } from 'hono/jwt';
+import * as v from 'valibot';
+import { SESSION_TTL_SECONDS, type SessionCtx, type TerminalCtx, hashToken } from './auth.ts';
+import type { Sql } from './db.ts';
+import { body, fail, idParam, parse } from './http.ts';
+import { createManageRoutes } from './manage.ts';
+import { submitOrder, voidOrder } from './orders.ts';
+import { changeStock, getProduct, listConflicts, listOrders, listProducts, resolveConflict } from './store-ops.ts';
+
+type Env = { Variables: { terminal: TerminalCtx; session: SessionCtx } };
+
+const Resolution = v.object({ resolution: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(300)) });
+
+export interface AppDeps {
+  sql: Sql;
+  sessionSecret: string;
+  /** Folder with the built admin panel (apps/admin/dist), served at /panel/. */
+  panelDir?: string;
+}
+
+export function createApp(deps: AppDeps) {
+  const { sql, sessionSecret } = deps;
+  const app = new Hono<Env>();
+
+  app.use(cors({ origin: '*', allowHeaders: ['Authorization', 'Content-Type', 'X-Session'] }));
+
+  app.onError((err, c) => {
+    if (err instanceof HTTPException) return err.getResponse();
+    // Postgres: unique / foreign-key violations are the caller's fault.
+    const code = (err as { code?: string }).code;
+    if (code === '23505') return c.json({ error: 'conflict', detail: String(err.message) }, 409);
+    if (code === '23503') return c.json({ error: 'unknown_reference', detail: String(err.message) }, 422);
+    console.error(err);
+    return c.json({ error: 'internal' }, 500);
+  });
+
+  app.get('/health', async (c) => {
+    await sql`select 1`;
+    return c.json({ ok: true });
+  });
+
+  // The web admin panel and its API authenticate people, not terminals, so
+  // they are mounted before the terminal check.
+  app.route('/manage', createManageRoutes(deps));
+  if (deps.panelDir) {
+    const root = relative(process.cwd(), deps.panelDir) || '.';
+    app.get('/', (c) => c.redirect('/panel/'));
+    app.get('/panel', (c) => c.redirect('/panel/'));
+    app.use('/panel/*', serveStatic({ root, rewriteRequestPath: (path) => path.replace(/^\/panel/, '') }));
+  }
+
+  // Everything below requires an enrolled terminal.
+  app.use(async (c, next) => {
+    const token = /^Bearer (.+)$/.exec(c.req.header('Authorization') ?? '')?.[1];
+    if (!token) fail(401, 'terminal_token_required');
+    const [terminal] = await sql<TerminalCtx[]>`
+      select id, store_id, code, name from terminals
+      where token_hash = ${hashToken(token)} and active`;
+    if (!terminal) fail(401, 'terminal_token_invalid');
+    c.set('terminal', terminal);
+    await next();
+  });
+
+  const requireAdmin = async (c: Context<Env>, next: () => Promise<void>) => {
+    const token = c.req.header('X-Session');
+    if (!token) fail(401, 'session_required');
+    const payload = await verify(token, sessionSecret, 'HS256').catch(() => fail(401, 'session_invalid'));
+    // Re-read the user so a deactivated or demoted admin loses access at once.
+    const [user] = await sql<{ id: string; role: User['role'] }[]>`
+      select id, role from users where id = ${String(payload.sub)} and active`;
+    if (!user) fail(401, 'session_invalid');
+    if (user.role !== 'admin') fail(403, 'admin_required');
+    c.set('session', { userId: user.id, role: user.role });
+    await next();
+  };
+
+  app.post('/auth/login', async (c) => {
+    const { username, password } = await body(c, LoginRequestSchema);
+    const { storeId } = c.var.terminal;
+    const [row] = await sql<(User & { passwordHash: string })[]>`
+      select id, username, name, role, password_hash from users
+      where username = ${username} and active and (store_id is null or store_id = ${storeId})`;
+    if (!row || !(await verifyPassword(password, row.passwordHash))) fail(401, 'bad_credentials');
+    const { passwordHash: _, ...user } = row;
+    const exp = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
+    const token = await sign({ sub: user.id, exp }, sessionSecret, 'HS256');
+    return c.json({ token, user } satisfies LoginResponse);
+  });
+
+  app.get('/sync/pull', async (c) => {
+    const terminal = c.var.terminal;
+    const [store] = await sql<PullResponse['store'][]>`
+      select id, code, name, currency_symbol, tax_rate_bps, tax_included
+      from stores where id = ${terminal.storeId}`;
+    const products = await listProducts(sql, terminal.storeId);
+    const users = await sql<PullResponse['users']>`
+      select id, username, name, role, password_hash from users
+      where active and (store_id is null or store_id = ${terminal.storeId})`;
+    const voided = await sql<{ id: string }[]>`
+      select id from orders
+      where terminal_id = ${terminal.id} and status = 'voided' and voided_at > now() - interval '30 days'`;
+    const [seq] = await sql<{ last: number }[]>`
+      select coalesce(max(ticket_seq), 0)::int as last from orders where terminal_id = ${terminal.id}`;
+    await sql`update terminals set last_seen_at = now() where id = ${terminal.id}`;
+    return c.json({
+      serverTime: new Date().toISOString(),
+      store: store!,
+      terminal: { id: terminal.id, code: terminal.code, name: terminal.name, lastTicketSeq: seq!.last },
+      products,
+      users,
+      voidedOrderIds: voided.map((r) => r.id),
+    } satisfies PullResponse);
+  });
+
+  app.post('/orders', async (c) => {
+    const { order, stockPolicy } = await body(c, SubmitOrderRequestSchema);
+    const problems = orderProblems(order);
+    if (problems.length > 0) fail(400, 'invalid_order', { problems });
+    const result = await submitOrder(sql, c.var.terminal, order, stockPolicy);
+    if (!result.ok) return c.json({ error: 'insufficient_stock', items: result.items }, 409);
+    return c.json(result.response);
+  });
+
+  app.post('/orders/:id/void', requireAdmin, async (c) => {
+    const { reason } = await body(c, VoidOrderSchema);
+    const result = await voidOrder(sql, {
+      orderId: idParam(c),
+      storeId: c.var.terminal.storeId,
+      userId: c.var.session.userId,
+      reason,
+    });
+    if (result === 'not_found') fail(404, 'not_found');
+    return c.json({ status: result });
+  });
+
+  // ------------------------------------------------------------- admin
+  // Admin actions from a register, always on the register's own store.
+  const admin = new Hono<Env>();
+  admin.use(requireAdmin);
+
+  const loadProduct = async (c: Context<Env>, id: string) =>
+    (await getProduct(sql, c.var.terminal.storeId, id)) ?? fail(404, 'not_found');
+
+  admin.post('/products', async (c) => {
+    const input = await body(c, ProductInputSchema);
+    const [row] = await sql<{ id: string }[]>`insert into products ${sql(input)} returning id`;
+    return c.json(await loadProduct(c, row!.id), 201);
+  });
+
+  admin.patch('/products/:id', async (c) => {
+    const id = idParam(c);
+    const patch = await body(c, ProductPatchSchema);
+    if (Object.keys(patch).length > 0) {
+      await sql`update products set ${sql(patch)}, updated_at = now() where id = ${id}`;
+    }
+    return c.json(await loadProduct(c, id));
+  });
+
+  /** Sets the counted quantity for this terminal's store. */
+  admin.put('/products/:id/stock', async (c) => {
+    const productId = idParam(c);
+    const change = await body(c, StockSetSchema);
+    await loadProduct(c, productId);
+    await changeStock(sql, { storeId: c.var.terminal.storeId, productId, userId: c.var.session.userId, change });
+    return c.json(await loadProduct(c, productId));
+  });
+
+  admin.get('/orders', async (c) => {
+    const { from, to } = parse(ReportRangeSchema, c.req.query());
+    return c.json({ orders: await listOrders(sql, c.var.terminal.storeId, from, to) });
+  });
+
+  admin.get('/conflicts', async (c) =>
+    c.json({ conflicts: await listConflicts(sql, c.var.terminal.storeId) }),
+  );
+
+  admin.post('/conflicts/:id/resolve', async (c) => {
+    const { resolution } = await body(c, Resolution);
+    const done = await resolveConflict(sql, {
+      storeId: c.var.terminal.storeId,
+      id: idParam(c),
+      userId: c.var.session.userId,
+      resolution,
+    });
+    if (!done) fail(404, 'not_found');
+    return c.json({ status: 'resolved' });
+  });
+
+  app.route('/admin', admin);
+  return app;
+}
+
+export type App = ReturnType<typeof createApp>;

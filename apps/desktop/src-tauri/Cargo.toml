@@ -1,0 +1,12 @@
+[package]
+name = "mpf-register"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+pos-native = { path = "../../../crates/pos-native" }
+serde_json = "1.0.151"
+tauri = { version = "2", features = [] }

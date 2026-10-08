@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "module": "NodeNext", "lib": ["ES2023", "DOM"] },
+  "include": ["src", "test"]
+}
