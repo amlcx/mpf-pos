@@ -37,14 +37,8 @@ pnpm build:admin        # then the API serves it at http://localhost:8787/panel/
 
 ## Production
 
-Point `DATABASE_URL` at the real database and set a long random
-`SESSION_SECRET`; the API applies migrations on start. Run `pnpm build:admin`
-before starting it so the panel is served at `/panel/`, and put the API behind
-HTTPS: the panel sends passwords to it. Enrol each PC from the panel (Tienda y cajas), or with:
-
-```sh
-pnpm --filter @mpf/api terminal:create <store-code> <terminal-code>
-```
+See [docs/DEPLOY.md](docs/DEPLOY.md): server setup, first administrator,
+building the Windows installer, updates and backups.
 
 ## Tests
 

@@ -32,6 +32,9 @@ pnpm typecheck      # tsc + svelte-check
 pnpm test           # all TS tests + pos-native; needs the dev Postgres running
 ```
 
+Deployment is described in `docs/DEPLOY.md`; keep it true when a change alters
+how the system is installed, configured or updated.
+
 Node runs the API's TypeScript directly (type stripping), so there is no build
 step for it. That is why enums, namespaces and constructor parameter
 properties are banned (`erasableSyntaxOnly`) and relative imports end in `.ts`.

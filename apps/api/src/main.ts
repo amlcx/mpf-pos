@@ -17,6 +17,17 @@ const app = createApp({
   sessionSecret: config.SESSION_SECRET,
   panelDir: existsSync(panelDir) ? panelDir : undefined,
 });
-serve({ fetch: app.fetch, port: config.PORT }, (info) => {
+const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
   console.log(`mpf api listening on http://localhost:${info.port}`);
 });
+
+// In a container this process is PID 1, where signals do nothing unless
+// handled. Stop taking requests, let the open ones finish, then leave.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(signal, () => {
+    server.close(async () => {
+      await sql.end({ timeout: 5 });
+      process.exit(0);
+    });
+  });
+}

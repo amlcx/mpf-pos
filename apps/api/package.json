@@ -13,6 +13,7 @@
     "migrate": "node --env-file-if-exists=.env src/scripts/migrate.ts",
     "seed": "node --env-file-if-exists=.env src/scripts/seed.ts",
     "terminal:create": "node --env-file-if-exists=.env src/scripts/create-terminal.ts",
+    "admin:create": "node --env-file-if-exists=.env src/scripts/create-admin.ts",
     "typecheck": "tsc -p .",
     "test": "vitest run"
   },

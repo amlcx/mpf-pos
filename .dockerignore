@@ -1,0 +1,12 @@
+# Keep the build context small and free of secrets and local state.
+.git
+**/node_modules
+**/dist
+target
+**/.env
+**/*.sqlite*
+apps/desktop/src-tauri
+crates
+docs
+*.webp
+!packages/brand/logo.webp
