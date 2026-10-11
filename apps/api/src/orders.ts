@@ -72,6 +72,17 @@ export async function submitOrder(
 
       const insufficient: InsufficientStockItem[] = [];
       const oversold: Oversell[] = [];
+      // Made-on-demand products have no quantity; a sale not yet handed over
+      // is refused while staff have them marked as sold out.
+      if (stockPolicy === 'strict') {
+        const gone = await tx<{ productId: string }[]>`
+          select product_id from sold_out
+          where store_id = ${terminal.storeId} and product_id in ${tx(productIds)}`;
+        for (const { productId } of gone) {
+          if (trackedIds.has(productId)) continue;
+          insufficient.push({ productId, requested: wanted.get(productId)!, available: 0 });
+        }
+      }
       for (const productId of productIds) {
         if (!trackedIds.has(productId)) continue;
         const quantity = wanted.get(productId)!;

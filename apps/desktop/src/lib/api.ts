@@ -34,7 +34,7 @@ export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 const TIMEOUT_MS = 8000;
 
 export class ApiClient {
-  /** Set after an online login; required by admin calls. */
+  /** Set after an online login; required by voids, sold-out marks and admin calls. */
   sessionToken: string | null = null;
   #baseUrl: string;
   #terminalToken: string;
@@ -73,6 +73,8 @@ export class ApiClient {
     this.request<SubmitOrderResponse>('POST', '/orders', { order, stockPolicy });
   voidOrder = (id: string, reason: string) =>
     this.request<{ status: string }>('POST', `/orders/${id}/void`, { reason });
+  setSoldOut = (id: string, soldOut: boolean) =>
+    this.request<Product>('PUT', `/products/${id}/sold-out`, { soldOut });
   createProduct = (input: ProductInput) => this.request<Product>('POST', '/admin/products', input);
   patchProduct = (id: string, patch: ProductPatch) =>
     this.request<Product>('PATCH', `/admin/products/${id}`, patch);

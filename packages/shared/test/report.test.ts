@@ -67,7 +67,7 @@ describe('reports', () => {
     const lines = csv.trimEnd().split('\r\n');
     expect(lines).toHaveLength(4);
     expect(lines[1]).toBe(
-      'A-0001;2026-10-07;09:05;"Ana; ""la jefa""";Completado;30555,56;2444,44;33000;10000;23000;2 x Flan, 1 x Café',
+      'A-0001;2026-10-07;09:05;"Ana; ""la jefa""";Completado;30555,56;2444,44;33000;10000;23000;2 x Flan, 1 x Café;;',
     );
     expect(lines[3]).toContain(';Anulado;');
     expect(ordersCsv([{ ...orders[0]!, cashierName: '=HYPERLINK("x")' }])).toContain(`;"'=HYPERLINK(""x"")";`);

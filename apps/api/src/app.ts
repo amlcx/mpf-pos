@@ -7,6 +7,8 @@ import {
   ProductPatchSchema,
   type PullResponse,
   ReportRangeSchema,
+  type Role,
+  SoldOutSchema,
   StockSetSchema,
   SubmitOrderRequestSchema,
   type User,
@@ -24,7 +26,15 @@ import type { Sql } from './db.ts';
 import { body, fail, idParam, parse } from './http.ts';
 import { createManageRoutes } from './manage.ts';
 import { submitOrder, voidOrder } from './orders.ts';
-import { changeStock, getProduct, listConflicts, listOrders, listProducts, resolveConflict } from './store-ops.ts';
+import {
+  changeStock,
+  getProduct,
+  listConflicts,
+  listOrders,
+  listProducts,
+  resolveConflict,
+  setSoldOut,
+} from './store-ops.ts';
 
 type Env = { Variables: { terminal: TerminalCtx; session: SessionCtx } };
 
@@ -80,18 +90,22 @@ export function createApp(deps: AppDeps) {
     await next();
   });
 
-  const requireAdmin = async (c: Context<Env>, next: () => Promise<void>) => {
+  /** A person logged in online at this terminal's store; with `role`, only that role. */
+  const requireSession = (role?: Role) => async (c: Context<Env>, next: () => Promise<void>) => {
     const token = c.req.header('X-Session');
     if (!token) fail(401, 'session_required');
     const payload = await verify(token, sessionSecret, 'HS256').catch(() => fail(401, 'session_invalid'));
-    // Re-read the user so a deactivated or demoted admin loses access at once.
-    const [user] = await sql<{ id: string; role: User['role'] }[]>`
-      select id, role from users where id = ${String(payload.sub)} and active`;
+    // Re-read the user so a deactivated, moved or demoted one loses access at once.
+    const [user] = await sql<{ id: string; role: Role }[]>`
+      select id, role from users
+      where id = ${String(payload.sub)} and active
+        and (store_id is null or store_id = ${c.var.terminal.storeId})`;
     if (!user) fail(401, 'session_invalid');
-    if (user.role !== 'admin') fail(403, 'admin_required');
+    if (role && user.role !== role) fail(403, 'admin_required');
     c.set('session', { userId: user.id, role: user.role });
     await next();
   };
+  const requireAdmin = requireSession('admin');
 
   app.post('/auth/login', async (c) => {
     const { username, password } = await body(c, LoginRequestSchema);
@@ -140,7 +154,8 @@ export function createApp(deps: AppDeps) {
     return c.json(result.response);
   });
 
-  app.post('/orders/:id/void', requireAdmin, async (c) => {
+  // Cashiers void too: the reason is mandatory and the session says who did it.
+  app.post('/orders/:id/void', requireSession(), async (c) => {
     const { reason } = await body(c, VoidOrderSchema);
     const result = await voidOrder(sql, {
       orderId: idParam(c),
@@ -150,6 +165,17 @@ export function createApp(deps: AppDeps) {
     });
     if (result === 'not_found') fail(404, 'not_found');
     return c.json({ status: result });
+  });
+
+  /** Whoever prepares a made-on-demand product says when it has run out. */
+  app.put('/products/:id/sold-out', requireSession(), async (c) => {
+    const productId = idParam(c);
+    const { soldOut } = await body(c, SoldOutSchema);
+    const { storeId } = c.var.terminal;
+    const result = await setSoldOut(sql, { storeId, productId, userId: c.var.session.userId, soldOut });
+    if (result === 'not_found') fail(404, 'not_found');
+    if (result === 'tracked') fail(409, 'product_tracks_stock');
+    return c.json((await getProduct(sql, storeId, productId))!);
   });
 
   // ------------------------------------------------------------- admin

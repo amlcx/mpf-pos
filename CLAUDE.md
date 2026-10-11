@@ -61,7 +61,8 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
   key: `POST /orders` with an id the server already has changes nothing and
   answers `duplicate`. Retrying a submission must always be safe.
 - Orders are never deleted or edited in place on the server. A mistake is
-  corrected by voiding (admin only), which records who, when and why.
+  corrected by voiding, which records who, when and why. Cashiers may void
+  from a register; the reason is mandatory.
 - Ticket numbers are `<terminal code>-<sequence>`, unique per terminal, never
   reused. The sequence lives on the register; each pull raises it to at least
   the server's last known value so a wiped PC cannot repeat a number.
@@ -82,6 +83,10 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
 - Never use `accept` for a sale whose ticket has not been handed out yet, and
   never use `strict` for one that has.
 - A void puts back exactly what that order's movements took, once.
+- Products made on demand (`track_stock = false`) have no quantity. Staff mark
+  them sold out by hand, per store (`sold_out` table, who and when). A `strict`
+  order containing one is rejected like any other shortage (409, available 0);
+  an `accept` order never is. The flag is ignored for tracked products.
 
 ### Offline and sync
 - The register writes to its local SQLite first and treats the server as
@@ -125,10 +130,11 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
   repeated failures lock the username for 15 minutes. Nobody can remove their
   own admin access.
 - Only the hash of a terminal token is stored. Tokens are shown once.
-- Admin routes and voids need an `X-Session` token from an online login, and
-  re-check the user's role in the database on every request.
+- Voids, sold-out marks and admin routes need an `X-Session` token from an
+  online login. Every request re-reads the user: active, allowed at the
+  terminal's store and, for admin routes, still an admin.
 - Offline login checks the password against the hash cached by the last pull.
-  It allows selling, not admin actions.
+  It allows selling only: no voids, sold-out marks or admin actions.
 
 ## Conventions
 

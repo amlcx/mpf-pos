@@ -73,7 +73,7 @@
             <td>{p.category}</td>
             <td class="num">{formatCents(p.priceCents, symbol)}</td>
             <td class="num">{p.trackStock ? p.stockQty : '—'}</td>
-            <td>{p.active ? '' : 'Oculto'}</td>
+            <td>{!p.active ? 'Oculto' : p.soldOut ? 'Agotado' : ''}</td>
           </tr>
         {/each}
       </tbody>

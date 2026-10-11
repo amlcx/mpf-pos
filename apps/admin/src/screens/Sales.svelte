@@ -197,6 +197,9 @@
     {#if selected}
       <h3>Pedido {selected.ticketNumber}</h3>
       <p class="muted">{when(selected.createdAt)} · {selected.cashierName ?? ''}</p>
+      {#if selected.status === 'voided'}
+        <p class="error">Anulado por {selected.voidedByName ?? '?'}: {selected.voidReason ?? ''}</p>
+      {/if}
       <dl>
         {#each selected.lines as line (line.id)}
           <dt>{line.quantity} × {line.name}</dt>

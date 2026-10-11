@@ -11,7 +11,9 @@ const productColumns = (sql: Sql, storeId: string) => sql`
   p.id, p.name, p.category, p.price_cents, p.track_stock, p.active,
   case when p.track_stock then coalesce(
     (select quantity from stock s where s.product_id = p.id and s.store_id = ${storeId}), 0)
-  end as stock_qty`;
+  end as stock_qty,
+  not p.track_stock and exists(
+    select 1 from sold_out so where so.product_id = p.id and so.store_id = ${storeId}) as sold_out`;
 
 export function listProducts(sql: Sql, storeId: string): Promise<Product[]> {
   return sql<Product[]>`
@@ -48,13 +50,36 @@ export async function changeStock(
   });
 }
 
+/**
+ * Marks a made-on-demand product as sold out in a store, or available again.
+ * Tracked products are refused: their quantity already says when they run out.
+ */
+export async function setSoldOut(
+  sql: Sql,
+  input: { storeId: string; productId: string; userId: string; soldOut: boolean },
+): Promise<'ok' | 'not_found' | 'tracked'> {
+  const { storeId, productId, userId, soldOut } = input;
+  const [product] = await sql<{ trackStock: boolean }[]>`
+    select track_stock from products where id = ${productId}`;
+  if (!product) return 'not_found';
+  if (product.trackStock) return 'tracked';
+  if (soldOut) {
+    await sql`
+      insert into sold_out ${sql({ storeId, productId, markedBy: userId })} on conflict do nothing`;
+  } else {
+    await sql`delete from sold_out where store_id = ${storeId} and product_id = ${productId}`;
+  }
+  return 'ok';
+}
+
 /** Orders with from <= createdAt < to, newest first, with lines and payments. */
 export async function listOrders(sql: Sql, storeId: string, from: string, to: string): Promise<ReportOrder[]> {
   const inRange = sql`o.store_id = ${storeId} and o.created_at >= ${from} and o.created_at < ${to}`;
   const orders = await sql<Omit<ReportOrder, 'lines' | 'payments'>[]>`
     select o.id, o.cashier_id, o.ticket_seq, o.ticket_number, o.created_at, o.tax_rate_bps,
-      o.tax_included, o.subtotal_cents, o.tax_cents, o.total_cents, o.status, u.name as cashier_name
-    from orders o join users u on u.id = o.cashier_id
+      o.tax_included, o.subtotal_cents, o.tax_cents, o.total_cents, o.status, u.name as cashier_name,
+      vu.name as voided_by_name, o.void_reason
+    from orders o join users u on u.id = o.cashier_id left join users vu on vu.id = o.voided_by
     where ${inRange} order by o.created_at desc`;
   const lines = await sql<(ReportOrder['lines'][number] & { orderId: string })[]>`
     select l.id, l.order_id, l.product_id, l.name, l.unit_price_cents, l.quantity, l.line_total_cents

@@ -58,6 +58,7 @@ export function errorText(err: unknown): string {
       session_required: 'Ingresa de nuevo con conexión para hacer esto.',
       session_invalid: 'Tu sesión venció. Ingresa de nuevo.',
       admin_required: 'Solo un administrador puede hacer esto.',
+      product_tracks_stock: 'Este producto controla existencias; no se marca a mano.',
     };
     return known[err.message] ?? `Error del servidor: ${err.message}`;
   }
@@ -206,10 +207,29 @@ export async function exportOrders(orders: ReportOrder[], label: string, range: 
   }
 }
 
+// ------------------------------------------------------- voids and sold out
+// Open to cashiers, but the server must know who is acting.
+
+/** True when the server knows who is logged in, which an offline login cannot give. */
+export const hasServerSession = () => !!app.session?.online && app.online;
+
+export async function voidOrder(id: string, reason: string): Promise<string | null> {
+  const error = await attempt(() => deps().api.voidOrder(id, reason));
+  await syncNow();
+  return error;
+}
+
+/** Marks a made-on-demand product as sold out in this store, or available again. */
+export async function setSoldOut(id: string, soldOut: boolean): Promise<string | null> {
+  if (!hasServerSession()) return 'Para marcar productos agotados se necesita conexión. Reconéctate e ingresa de nuevo.';
+  const error = await attempt(() => deps().api.setSoldOut(id, soldOut));
+  await syncNow();
+  return error;
+}
+
 // -------------------------------------------------------------------- admin
 
-/** Admin actions need a server session, which an offline login cannot give. */
-export const canAdmin = () => app.session?.user.role === 'admin' && app.session.online && app.online;
+export const canAdmin = () => app.session?.user.role === 'admin' && hasServerSession();
 
 export async function saveProduct(
   id: string | null,
@@ -223,12 +243,6 @@ export async function saveProduct(
       await api.setStock(product.id, stockQty);
     }
   });
-  await syncNow();
-  return error;
-}
-
-export async function voidOrder(id: string, reason: string): Promise<string | null> {
-  const error = await attempt(() => deps().api.voidOrder(id, reason));
   await syncNow();
   return error;
 }

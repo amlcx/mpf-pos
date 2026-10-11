@@ -90,7 +90,7 @@ export function summarize(orders: ReportOrder[], top = 5): Summary {
 // and a BOM so Excel reads the accents. Amounts carry no thousands separator.
 const HEADERS = [
   'Tiquete', 'Fecha', 'Hora', 'Cajero', 'Estado', 'Subtotal', 'Impuesto', 'Total',
-  'Efectivo', 'Digital', 'Productos',
+  'Efectivo', 'Digital', 'Productos', 'Anulado por', 'Motivo',
 ];
 
 function amount(cents: number): string {
@@ -121,6 +121,8 @@ export function ordersCsv(orders: ReportOrder[]): string {
       amount(paid('cash')),
       amount(paid('digital')),
       text(o.lines.map((l) => `${l.quantity} x ${l.name}`).join(', ')),
+      text(o.voidedByName ?? ''),
+      text(o.voidReason ?? ''),
     ].join(';');
   });
   return `﻿${[HEADERS.join(';'), ...rows].join('\r\n')}\r\n`;

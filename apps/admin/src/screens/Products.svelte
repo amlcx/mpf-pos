@@ -79,6 +79,15 @@
     }
     await reload();
   }
+
+  async function toggleSoldOut() {
+    if (!current) return;
+    busy = true;
+    error = (await attempt(() => api.setSoldOut(storeId, current.id, !current.soldOut))) ?? '';
+    busy = false;
+    message = '';
+    await reload();
+  }
 </script>
 
 <div class="split">
@@ -103,7 +112,9 @@
             <td class="num">
               {#if !p.trackStock}—{:else if (p.stockQty ?? 0) < 0}<span class="pill bad">{p.stockQty}</span>{:else}{p.stockQty}{/if}
             </td>
-            <td>{p.active ? '' : 'Oculto'}</td>
+            <td>
+              {#if !p.active}Oculto{:else if p.soldOut}<span class="pill bad">Agotado</span>{/if}
+            </td>
           </tr>
         {:else}
           <tr><td colspan="5" class="muted">No hay productos.</td></tr>
@@ -128,6 +139,16 @@
             <button disabled={busy}>Fijar</button>
           </form>
           <p class="muted">“Aplicar” suma o resta unidades (por ejemplo 12 o -3). “Fijar” reemplaza la cantidad por lo contado.</p>
+        </div>
+      {:else if current}
+        <div class="card">
+          <h3>{current.soldOut ? 'Agotado' : 'Disponible'} en {store?.name}</h3>
+          <p class="muted">Se prepara al momento y no lleva existencias. Los cajeros también lo marcan desde la caja.</p>
+          <div class="row">
+            <button disabled={busy} onclick={toggleSoldOut}>
+              {current.soldOut ? 'Marcar disponible' : 'Marcar agotado'}
+            </button>
+          </div>
         </div>
       {/if}
       <form class="card" onsubmit={save}>

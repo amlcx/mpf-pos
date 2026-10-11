@@ -61,7 +61,8 @@ export async function loadContext(db: LocalDb): Promise<Context | null> {
 export interface LocalProduct extends Product {
   /**
    * What this terminal may still sell: the server's last known quantity minus
-   * local sales the server has not confirmed yet. null when untracked.
+   * local sales the server has not confirmed yet. null when untracked, and
+   * 0 while a made-on-demand product is marked as sold out.
    */
   available: number | null;
 }
@@ -69,7 +70,7 @@ export interface LocalProduct extends Product {
 export async function listProducts(db: LocalDb): Promise<LocalProduct[]> {
   const rows = await db.select<any>(
     `select p.id, p.name, p.category, p.price_cents as priceCents, p.track_stock as trackStock,
-       p.active, p.stock_qty as stockQty,
+       p.active, p.stock_qty as stockQty, p.sold_out as soldOut,
        coalesce((select sum(l.quantity) from order_lines l join orders o on o.id = l.order_id
          where l.product_id = p.id and o.sync_status <> 'synced' and o.status = 'completed'), 0) as unsynced
      from products p order by p.category, p.name`,
@@ -78,7 +79,8 @@ export async function listProducts(db: LocalDb): Promise<LocalProduct[]> {
     ...p,
     trackStock: !!p.trackStock,
     active: !!p.active,
-    available: p.trackStock ? (p.stockQty ?? 0) - unsynced : null,
+    soldOut: !!p.soldOut,
+    available: p.trackStock ? (p.stockQty ?? 0) - unsynced : p.soldOut ? 0 : null,
   }));
 }
 
@@ -95,8 +97,9 @@ export async function applyPull(db: LocalDb, pull: PullResponse): Promise<void> 
   const statements: Statement[] = [
     { sql: 'delete from products' },
     ...pull.products.map((p) => ({
-      sql: 'insert into products (id, name, category, price_cents, track_stock, active, stock_qty) values (?, ?, ?, ?, ?, ?, ?)',
-      params: [p.id, p.name, p.category, p.priceCents, +p.trackStock, +p.active, p.stockQty],
+      sql: `insert into products (id, name, category, price_cents, track_stock, active, stock_qty, sold_out)
+            values (?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [p.id, p.name, p.category, p.priceCents, +p.trackStock, +p.active, p.stockQty, +p.soldOut],
     })),
     { sql: 'delete from users' },
     ...pull.users.map((u) => ({

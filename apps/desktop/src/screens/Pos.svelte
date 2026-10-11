@@ -1,7 +1,7 @@
 <script lang="ts">
   import { type CartItem, type PaymentInput, computeTotals, formatCents } from '@mpf/shared';
   import type { LocalOrder, LocalProduct } from '../lib/repo.ts';
-  import { app, printTicket, sell } from '../lib/state.svelte.ts';
+  import { app, printTicket, sell, setSoldOut } from '../lib/state.svelte.ts';
   import Payment from './Payment.svelte';
 
   let cart = $state<CartItem[]>([]);
@@ -17,7 +17,11 @@
 
   const store = $derived(app.context!.store);
   const symbol = $derived(store.currencySymbol);
-  const selling = $derived(app.products.filter((p) => p.active));
+  // While marking, the grid lists only made-on-demand products and a click
+  // flips whether the store can still prepare them.
+  let marking = $state(false);
+  const selling = $derived(app.products.filter((p) => p.active && (!marking || !p.trackStock)));
+  const madeOnDemand = $derived(app.products.some((p) => p.active && !p.trackStock));
   const categories = $derived([...new Set(selling.map((p) => p.category).filter(Boolean))]);
   const visible = $derived(
     selling.filter(
@@ -30,6 +34,14 @@
 
   const inCart = (id: string) => cart.find((i) => i.productId === id)?.quantity ?? 0;
   const left = (p: LocalProduct) => (p.available === null ? null : p.available - inCart(p.id));
+
+  let toggling = $state(false);
+  async function toggleSoldOut(p: LocalProduct) {
+    if (toggling) return;
+    toggling = true;
+    notice = await setSoldOut(p.id, !p.soldOut);
+    toggling = false;
+  }
 
   function add(p: LocalProduct) {
     const remaining = left(p);
@@ -129,24 +141,40 @@
       {#each categories as c (c)}
         <button class:active={category === c} onclick={() => (category = c)}>{c}</button>
       {/each}
+      <span class="spacer"></span>
+      {#if madeOnDemand || marking}
+        <button class:active={marking} onclick={() => { marking = !marking; category = ''; notice = null; }}>
+          {marking ? 'Listo' : 'Marcar agotados'}
+        </button>
+      {/if}
     </div>
+    {#if marking}
+      <p class="hint">Toca un producto preparado al momento para marcarlo como agotado o disponible en esta tienda.</p>
+    {/if}
     <div class="grid">
       {#each visible as p (p.id)}
         {@const remaining = left(p)}
         {@const quantity = inCart(p.id)}
-        <button
-          class="product"
-          class:current={activeId === p.id}
-          disabled={remaining !== null && remaining <= 0}
-          onclick={() => add(p)}
-        >
-          {#if quantity > 0}<span class="badge">{quantity}</span>{/if}
-          <span class="name">{p.name}</span>
-          <span>{formatCents(p.priceCents, symbol)}</span>
-          {#if remaining !== null}
-            <span class="stock" class:low={remaining <= 3}>{remaining > 0 ? `Quedan ${remaining}` : 'Agotado'}</span>
-          {/if}
-        </button>
+        {#if marking}
+          <button class="product" disabled={toggling} onclick={() => toggleSoldOut(p)}>
+            <span class="name">{p.name}</span>
+            <span class="stock" class:low={p.soldOut}>{p.soldOut ? 'Agotado' : 'Disponible'}</span>
+          </button>
+        {:else}
+          <button
+            class="product"
+            class:current={activeId === p.id}
+            disabled={remaining !== null && remaining <= 0}
+            onclick={() => add(p)}
+          >
+            {#if quantity > 0}<span class="badge">{quantity}</span>{/if}
+            <span class="name">{p.name}</span>
+            <span>{formatCents(p.priceCents, symbol)}</span>
+            {#if remaining !== null}
+              <span class="stock" class:low={remaining <= 3}>{remaining > 0 ? `Quedan ${remaining}` : 'Agotado'}</span>
+            {/if}
+          </button>
+        {/if}
       {:else}
         <p class="muted">No hay productos.</p>
       {/each}

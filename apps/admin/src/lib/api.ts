@@ -81,6 +81,7 @@ const MESSAGES: Record<string, string> = {
   admin_password_required: 'Para volver administrador a un cajero, asígnale una contraseña nueva de al menos 8 caracteres.',
   cannot_change_own_access: 'No puedes quitarte tu propio acceso.',
   stock_would_be_negative: 'No se pueden retirar más unidades de las que hay.',
+  product_tracks_stock: 'Este producto controla existencias; no se marca a mano.',
   not_found: 'Ese registro ya no existe.',
 };
 
@@ -127,6 +128,8 @@ export const api = {
   patchProduct: (id: string, patch: ProductPatch) => request<{ id: string }>('PATCH', `/products/${id}`, patch),
   changeStock: (storeId: string, id: string, change: StockChange) =>
     request<{ product: Product }>('PUT', `${store(storeId)}/products/${id}/stock`, change),
+  setSoldOut: (storeId: string, id: string, soldOut: boolean) =>
+    request<{ product: Product }>('PUT', `${store(storeId)}/products/${id}/sold-out`, { soldOut }),
 
   orders: (storeId: string, from: string, to: string) =>
     request<{ orders: ReportOrder[] }>(

@@ -53,6 +53,12 @@ describe('store scoping', () => {
     }
     expect((await manage(local, 'PATCH', `/stores/${northId}`, { name: 'Mine now' })).status).toBe(403);
     expect((await manage(local, 'PUT', `/stores/${northId}/products/${w.products.flan}/stock`, { quantity: 99 })).status).toBe(403);
+    expect((await manage(local, 'PUT', `/stores/${northId}/products/${w.products.coffee}/sold-out`, { soldOut: true })).status).toBe(403);
+    const soldOut = await manage(local, 'PUT', `/stores/${w.storeId}/products/${w.products.coffee}/sold-out`, { soldOut: true });
+    expect(soldOut.json.product).toMatchObject({ soldOut: true });
+    const north = (await manage(org, 'GET', `/stores/${northId}/products`)).json.products;
+    expect(north.some((p: { soldOut: boolean }) => p.soldOut)).toBe(false);
+    await manage(local, 'PUT', `/stores/${w.storeId}/products/${w.products.coffee}/sold-out`, { soldOut: false });
     expect((await manage(local, 'POST', '/stores', { code: 'X', name: 'X' })).status).toBe(403);
   });
 

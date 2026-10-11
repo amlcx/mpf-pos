@@ -6,7 +6,8 @@ import type { Role } from '@mpf/shared';
  * - terminal token: identifies an enrolled PC and, through it, the store.
  *   Sent as `Authorization: Bearer`. Enough to sync and submit orders.
  * - session token: identifies the logged-in person. Sent as `X-Session`.
- *   Required, with the admin role, for anything under /admin and for voids.
+ *   Required to void an order or mark a product sold out, and, with the
+ *   admin role, for anything under /admin.
  */
 export interface TerminalCtx {
   id: string;

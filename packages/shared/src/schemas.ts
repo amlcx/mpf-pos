@@ -21,6 +21,11 @@ export const ProductSchema = v.object({
   active: v.boolean(),
   /** Quantity on hand in the requesting terminal's store; null when untracked. */
   stockQty: v.nullable(v.pipe(v.number(), v.safeInteger())),
+  /**
+   * Marked by hand as unavailable in the requesting terminal's store. Only
+   * untracked (made on demand) products can be; always false for tracked ones.
+   */
+  soldOut: v.boolean(),
 });
 export type Product = v.InferOutput<typeof ProductSchema>;
 
@@ -47,6 +52,8 @@ export type ProductPatch = v.InferOutput<typeof ProductPatchSchema>;
 export const StockSetSchema = v.object({
   quantity: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
 });
+
+export const SoldOutSchema = v.object({ soldOut: v.boolean() });
 
 // ----------------------------------------------------------------- orders
 
@@ -125,6 +132,9 @@ export interface InsufficientStockError {
 export interface ReportOrder extends Order {
   status: 'completed' | 'voided';
   cashierName: string | null;
+  /** Who voided it and why. Only orders read from the server carry these. */
+  voidedByName?: string | null;
+  voidReason?: string | null;
 }
 
 /** Half-open interval of instants: from <= createdAt < to. */

@@ -157,6 +157,35 @@ describe('terminals against the server', () => {
     expect(await a.available('brownie')).toBe(7);
   });
 
+  it('a cashier voids their own sale once logged in online', async () => {
+    const result = await a.sell({ brownie: 2 });
+    if (!result.ok) throw new Error('unreachable');
+    expect(await login(a, 'cashier', '1234')).toMatchObject({ online: true, user: { role: 'cashier' } });
+    await a.api.voidOrder(result.order.id, 'rang it up twice');
+    await syncOnce(a);
+    expect((await getOrder(a.db, result.order.id))!.status).toBe('voided');
+    expect(await a.available('brownie')).toBe(7);
+    const [row] = await w.sql`select voided_by, void_reason from orders where id = ${result.order.id}`;
+    expect(row).toEqual({ voidedBy: w.cashierId, voidReason: 'rang it up twice' });
+  });
+
+  it('a product marked sold out on one terminal stops selling on the other', async () => {
+    await a.api.setSoldOut(w.products.coffee, true); // still logged in as the cashier
+    // B has not heard yet: the server refuses, and B comes back up to date.
+    expect(await b.available('coffee')).toBeNull();
+    expect(await b.sell({ coffee: 1 })).toMatchObject({ ok: false, reason: 'insufficient_stock', items: [{ available: 0 }] });
+    expect(await b.available('coffee')).toBe(0);
+    // Now B knows, and refuses without asking, online or not.
+    const tickets = (await loadContext(b.db))!.nextTicketSeq;
+    expect(await b.sell({ coffee: 1 }, false)).toMatchObject({ ok: false, reason: 'insufficient_stock' });
+    expect((await loadContext(b.db))!.nextTicketSeq).toBe(tickets);
+
+    await a.api.setSoldOut(w.products.coffee, false);
+    await syncOnce(b);
+    expect(await b.available('coffee')).toBeNull();
+    expect(await b.sell({ coffee: 1 })).toMatchObject({ ok: true, synced: true });
+  });
+
   it('logs in offline with cached credentials, without admin powers', async () => {
     a.net.up = false;
     expect(await login(a, 'cashier', 'wrong')).toBeNull();

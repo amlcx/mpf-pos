@@ -127,6 +127,60 @@ describe('orders and stock', () => {
     expect(pull.json.terminal.lastTicketSeq).toBeGreaterThanOrEqual(seq);
   });
 
+  it('lets a cashier void, recording who and why', async () => {
+    const order = makeOrder(w, 'A', ++seq, { brownie: 2 });
+    await call(w.app, tokenA(), 'POST', '/orders', { order, stockPolicy: 'strict' });
+    const before = await stockOf(w, 'brownie');
+    const path = `/orders/${order.id}/void`;
+
+    expect((await call(w.app, tokenA(), 'POST', path, { reason: 'x' })).status).toBe(401);
+    expect((await call(w.app, tokenA(), 'POST', path, { reason: '  ' }, cashierSession)).status).toBe(400);
+    const voided = await call(w.app, tokenA(), 'POST', path, { reason: 'wrong flavour' }, cashierSession);
+    expect(voided.json.status).toBe('voided');
+    expect(await stockOf(w, 'brownie')).toBe(before + 2);
+
+    const [row] = await w.sql`select voided_by, void_reason from orders where id = ${order.id}`;
+    expect(row).toEqual({ voidedBy: w.cashierId, voidReason: 'wrong flavour' });
+    const range = `from=${new Date(Date.now() - 3_600_000).toISOString()}&to=${new Date(Date.now() + 3_600_000).toISOString()}`;
+    const report = await call(w.app, tokenA(), 'GET', `/admin/orders?${range}`, undefined, adminSession);
+    expect(report.json.orders.find((o: { id: string }) => o.id === order.id)).toMatchObject({
+      status: 'voided',
+      voidedByName: 'Cashier',
+      voidReason: 'wrong flavour',
+    });
+  });
+
+  it('sold out: a made-on-demand product is refused until staff bring it back', async () => {
+    const path = `/products/${w.products.coffee}/sold-out`;
+    expect((await call(w.app, tokenA(), 'PUT', path, { soldOut: true })).status).toBe(401);
+    const marked = await call(w.app, tokenA(), 'PUT', path, { soldOut: true }, cashierSession);
+    expect(marked.json).toMatchObject({ id: w.products.coffee, soldOut: true, stockQty: null });
+    const [row] = await w.sql`select marked_by from sold_out where product_id = ${w.products.coffee}`;
+    expect(row).toEqual({ markedBy: w.cashierId });
+    // Products with a quantity run out on their own.
+    const tracked = await call(w.app, tokenA(), 'PUT', `/products/${w.products.flan}/sold-out`, { soldOut: true }, cashierSession);
+    expect(tracked.status).toBe(409);
+
+    const pull = await call<PullResponse>(w.app, tokenB(), 'GET', '/sync/pull');
+    expect(pull.json.products.filter((p) => p.soldOut).map((p) => p.name)).toEqual(['Coffee']);
+
+    const order = makeOrder(w, 'B', ++seq, { coffee: 2, brownie: 1 });
+    const before = await stockOf(w, 'brownie');
+    const refused = await call(w.app, tokenB(), 'POST', '/orders', { order, stockPolicy: 'strict' });
+    expect(refused.status).toBe(409);
+    expect(refused.json.items).toEqual([{ productId: w.products.coffee, requested: 2, available: 0 }]);
+    expect(await stockOf(w, 'brownie')).toBe(before);
+
+    // A sale already handed over offline is never refused.
+    const offline = makeOrder(w, 'B', ++seq, { coffee: 1 });
+    const kept = await call(w.app, tokenB(), 'POST', '/orders', { order: offline, stockPolicy: 'accept' });
+    expect(kept.json).toEqual({ status: 'accepted', oversold: [] });
+
+    await call(w.app, tokenA(), 'PUT', path, { soldOut: false }, cashierSession);
+    const retry = await call(w.app, tokenB(), 'POST', '/orders', { order, stockPolicy: 'strict' });
+    expect(retry.json.status).toBe('accepted');
+  });
+
   it('keeps a ledger row for every stock change', async () => {
     const rows = await w.sql<{ productId: string; moved: number; quantity: number }[]>`
       select s.product_id, s.quantity,
@@ -221,5 +275,13 @@ describe('multiple stores', () => {
     const session = (await call(w.app, other.token, 'POST', '/auth/login', { username: 'admin', password: 'admin123' })).json.token;
     const cross = await call(w.app, other.token, 'POST', `/orders/${mainOrder.id}/void`, { reason: 'x' }, session);
     expect(cross.status).toBe(404);
+
+    // A session belongs to the stores its user may work at.
+    const coffee = `/products/${w.products.coffee}/sold-out`;
+    expect((await call(w.app, other.token, 'PUT', coffee, { soldOut: true }, cashierSession)).status).toBe(401);
+    // Sold out is per store.
+    await call(w.app, other.token, 'PUT', coffee, { soldOut: true }, session);
+    const main = await call<PullResponse>(w.app, tokenA(), 'GET', '/sync/pull');
+    expect(main.json.products.some((p) => p.soldOut)).toBe(false);
   });
 });

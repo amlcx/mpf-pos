@@ -6,6 +6,7 @@ import {
   ProductInputSchema,
   ProductPatchSchema,
   ReportRangeSchema,
+  SoldOutSchema,
   StockChangeSchema,
   type StoreInfo,
   StoreInputSchema,
@@ -25,7 +26,15 @@ import { SESSION_TTL_SECONDS, hashToken, newTerminalToken } from './auth.ts';
 import type { Sql } from './db.ts';
 import { body, fail, idParam, parse } from './http.ts';
 import { voidOrder } from './orders.ts';
-import { changeStock, getProduct, listConflicts, listOrders, listProducts, resolveConflict } from './store-ops.ts';
+import {
+  changeStock,
+  getProduct,
+  listConflicts,
+  listOrders,
+  listProducts,
+  resolveConflict,
+  setSoldOut,
+} from './store-ops.ts';
 
 /**
  * API of the web admin panel. Unlike the register routes there is no
@@ -259,6 +268,16 @@ export function createManageRoutes(deps: { sql: Sql; sessionSecret: string }) {
     if (!(await changeStock(sql, { storeId, productId, userId: c.var.admin.id, change }))) {
       fail(409, 'stock_would_be_negative');
     }
+    return c.json({ product: (await getProduct(sql, storeId, productId))! });
+  });
+
+  m.put('/stores/:storeId/products/:id/sold-out', async (c) => {
+    const storeId = storeParam(c);
+    const productId = idParam(c);
+    const { soldOut } = await body(c, SoldOutSchema);
+    const result = await setSoldOut(sql, { storeId, productId, userId: c.var.admin.id, soldOut });
+    if (result === 'not_found') fail(404, 'not_found');
+    if (result === 'tracked') fail(409, 'product_tracks_stock');
     return c.json({ product: (await getProduct(sql, storeId, productId))! });
   });
 

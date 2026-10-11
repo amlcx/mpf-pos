@@ -14,6 +14,7 @@
     canAdmin,
     errorText,
     exportOrders,
+    hasServerSession,
     loadConflicts,
     loadOrders,
     loadStoreOrders,
@@ -95,7 +96,7 @@
     message = (await printTicket(selected)) ?? (app.config?.printerTarget ? 'Enviado a la impresora.' : 'No hay impresora configurada.');
   }
 
-  // The order being voided, while the admin types the reason.
+  // The order being voided, while the cashier types the reason.
   let voiding = $state<{ orderId: string; ticketNumber: string } | null>(null);
   let voidReason = $state('');
 
@@ -118,7 +119,7 @@
   }
 
   const canVoid = (o: ReportOrder) =>
-    o.status === 'completed' && canAdmin() && (local(o)?.syncStatus ?? 'synced') === 'synced';
+    o.status === 'completed' && hasServerSession() && (local(o)?.syncStatus ?? 'synced') === 'synced';
 </script>
 
 <div class="split">
@@ -244,6 +245,9 @@
     {/if}
     {#if selected}
       <pre>{preview}</pre>
+      {#if selected.voidReason}
+        <p class="muted">Anulado por {selected.voidedByName ?? '?'}: {selected.voidReason}</p>
+      {/if}
       {#if local(selected)?.syncError}<p class="error">{local(selected)?.syncError}</p>{/if}
       <div class="row">
         <button onclick={reprint}>Reimprimir</button>
