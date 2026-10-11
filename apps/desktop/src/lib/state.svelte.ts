@@ -169,11 +169,17 @@ export function ticketPreview(order: ReportOrder): string {
   return ticketText(ticketFor(order), app.config?.paperColumns ?? 48);
 }
 
-/** Returns an error message, or null when printed (or no printer is set). */
-export async function printTicket(order: ReportOrder): Promise<string | null> {
-  const target = app.config?.printerTarget;
-  if (!target) return null;
-  return attempt(() => printRaw(target, escpos(ticketFor(order))));
+/**
+ * Returns an error message, or null when printed (or no printer is set).
+ * `justSold` marks the ticket of a sale being paid right now, as opposed to a
+ * copy: only that one opens the cash drawer, and only if cash changed hands.
+ */
+export async function printTicket(order: ReportOrder, justSold = false): Promise<string | null> {
+  const config = app.config;
+  if (!config?.printerTarget) return null;
+  const openDrawer = justSold && config.cashDrawer && order.payments.some((p) => p.method === 'cash');
+  const bytes = escpos(ticketFor(order), { cutter: config.cutter, openDrawer });
+  return attempt(() => printRaw(config.printerTarget, bytes));
 }
 
 // ------------------------------------------------------------------ reports

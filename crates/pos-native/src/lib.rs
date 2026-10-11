@@ -7,6 +7,9 @@ use rusqlite::{params_from_iter, Connection};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
+#[cfg(windows)]
+mod spooler;
+
 pub type Row = Map<String, Value>;
 
 #[derive(Debug, Deserialize)]
@@ -97,10 +100,18 @@ impl Db {
 
 /// Sends raw ESC/POS bytes to the printer.
 ///
-/// `target` is a path the OS exposes the printer at, e.g. `/dev/usb/lp0` on
-/// Linux. A regular file works too, which is handy for looking at the bytes
-/// during development. Windows spooler support comes with the real printers.
+/// On Windows `target` is the printer's name as Windows shows it, and the
+/// bytes go through the spooler as a RAW job. A path with a drive letter is
+/// written as a file instead.
+///
+/// Elsewhere `target` is a path the OS exposes the printer at, e.g.
+/// `/dev/usb/lp0` on Linux. A regular file works too, which is handy for
+/// looking at the bytes during development.
 pub fn print_raw(target: &str, bytes: &[u8]) -> Result<(), String> {
+    #[cfg(windows)]
+    if target.as_bytes().get(1) != Some(&b':') {
+        return spooler::print_raw(target, bytes);
+    }
     let mut file = std::fs::OpenOptions::new()
         .append(true)
         .create(true)

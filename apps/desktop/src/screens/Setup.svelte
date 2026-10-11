@@ -7,6 +7,8 @@
   let terminalToken = $state(app.config?.terminalToken ?? '');
   let printerTarget = $state(app.config?.printerTarget ?? '');
   let paperColumns = $state(app.config?.paperColumns ?? 48);
+  let cutter = $state(app.config?.cutter ?? true);
+  let cashDrawer = $state(app.config?.cashDrawer ?? false);
   let busy = $state(false);
   let message = $state('');
   let failed = $state(false);
@@ -19,6 +21,8 @@
       terminalToken: terminalToken.trim(),
       printerTarget: printerTarget.trim(),
       paperColumns,
+      cutter,
+      cashDrawer,
     });
     busy = false;
     failed = error !== null;
@@ -36,7 +40,7 @@
   <label>Token de la caja <input bind:value={terminalToken} required type="password" /></label>
   <label>
     Impresora
-    <input bind:value={printerTarget} placeholder="/dev/usb/lp0  (vacío: sin impresora)" />
+    <input bind:value={printerTarget} placeholder="Nombre en Windows o /dev/usb/lp0  (vacío: sin impresora)" />
   </label>
   <label>
     Ancho del papel
@@ -44,6 +48,10 @@
       <option value={48}>80 mm (48 caracteres)</option>
       <option value={32}>58 mm (32 caracteres)</option>
     </select>
+  </label>
+  <label class="check"><input type="checkbox" bind:checked={cutter} /> La impresora corta el papel sola</label>
+  <label class="check">
+    <input type="checkbox" bind:checked={cashDrawer} /> Abrir el cajón al cobrar en efectivo
   </label>
   <button class="primary" disabled={busy}>{busy ? 'Verificando…' : 'Guardar'}</button>
   {#if message}<p class={failed ? 'error' : 'muted'}>{message}</p>{/if}

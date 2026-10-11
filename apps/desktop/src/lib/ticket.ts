@@ -84,14 +84,28 @@ const ESC = 0x1b;
 const GS = 0x1d;
 const LF = 0x0a;
 
-/** ESC/POS bytes for a ticket: initialise, rows, feed, partial cut. */
-export function escpos(rows: TicketRow[]): Uint8Array {
+export interface PrintOptions {
+  /** The printer cuts the paper itself. Without one, feed enough to tear by hand. */
+  cutter: boolean;
+  /** Pulse the cash drawer plugged into the printer. */
+  openDrawer: boolean;
+}
+
+/** Lines fed after the last row so it clears the tear bar. */
+const TEAR_FEED = 4;
+
+/** ESC/POS bytes for a ticket: initialise, drawer pulse, rows, feed, partial cut. */
+export function escpos(rows: TicketRow[], { cutter, openDrawer }: PrintOptions): Uint8Array {
   const out: number[] = [ESC, 0x40];
+  // Drawer pin 2, 50 ms on, 500 ms off. First, so it opens while the ticket prints.
+  if (openDrawer) out.push(ESC, 0x70, 0x00, 0x19, 0xfa);
   for (const row of rows) {
     out.push(ESC, 0x61, row.align === 'center' ? 1 : 0);
     out.push(GS, 0x21, row.big ? 0x11 : 0x00);
     out.push(...ascii(row.text), LF);
   }
-  out.push(GS, 0x21, 0x00, ESC, 0x61, 0, LF, LF, LF, GS, 0x56, 0x42, 0x03);
+  out.push(GS, 0x21, 0x00, ESC, 0x61, 0);
+  if (cutter) out.push(LF, LF, LF, GS, 0x56, 0x42, 0x03);
+  else out.push(...Array<number>(TEAR_FEED).fill(LF));
   return Uint8Array.from(out);
 }

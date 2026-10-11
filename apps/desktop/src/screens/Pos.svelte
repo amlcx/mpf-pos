@@ -79,7 +79,7 @@
       const result = await sell($state.snapshot(cart), payments);
       if (result.ok) {
         clear();
-        const printError = await printTicket(result.order);
+        const printError = await printTicket(result.order, true);
         done = {
           order: result.order,
           synced: result.synced,

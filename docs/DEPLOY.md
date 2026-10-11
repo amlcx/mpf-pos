@@ -174,16 +174,26 @@ under "Experimental: Build Windows apps on Linux and macOS".
 Each register must have its **own** token. Two PCs sharing one would issue the
 same ticket numbers.
 
-### Printing on Windows is not finished
+### Printer settings
 
-The register sends raw ticket data to whatever path is typed in
-**Impresora**. On Linux that is the printer's device (for example
-`/dev/usb/lp0`). On Windows there is no equivalent yet: proper support is
-still to be written and depends on the printer model.
+The stores use the Xprinter XP-58IIT: 58 mm paper, no auto-cutter, cash
+drawer plugged into the printer. For that model:
 
-Until then, leave **Impresora** empty; sales work and the ticket can be seen
-on screen under **Pedidos**. One thing that may work in the meantime, untried:
-share the printer in Windows and enter `\\localhost\<share name>`.
+- **Impresora**: on Windows, the printer's name exactly as it appears under
+  **Impresoras y escáneres** (install the printer's driver first, or add it
+  with Windows' own "Generic / Text Only" driver). On Linux, the printer's
+  device, for example `/dev/usb/lp0`. Empty means no printer: sales work and
+  the ticket can be seen on screen under **Pedidos**.
+- **Ancho del papel**: 58 mm.
+- **La impresora corta el papel sola**: off. The ticket is then fed far
+  enough to tear by hand.
+- **Abrir el cajón al cobrar en efectivo**: on. The drawer opens when a sale
+  with a cash payment is printed, not on copies or reprints.
+
+The register sends raw ESC/POS data, on Windows through the print spooler.
+The Windows path has been compiled but **not yet tried on a real printer**:
+make a cash test sale on the first PC and check the ticket prints, tears
+cleanly below the last line, and the drawer opens.
 
 ## 6. Updating
 

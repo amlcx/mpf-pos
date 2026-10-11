@@ -34,11 +34,27 @@ describe('ticket', () => {
     });
   }
 
+  const rows = ticketRows({ businessName: 'Mi Postre Favorito', storeName: 'Main Store', cashierName: 'Ana', order, columns: 48 });
+
   it('encodes ESC/POS as plain ASCII ending in a cut', () => {
-    const bytes = escpos(ticketRows({ businessName: 'Mi Postre Favorito', storeName: 'Main Store', cashierName: 'Ana', order, columns: 48 }));
+    const bytes = escpos(rows, { cutter: true, openDrawer: false });
     expect([...bytes.slice(0, 2)]).toEqual([0x1b, 0x40]);
     expect([...bytes.slice(-4)]).toEqual([0x1d, 0x56, 0x42, 0x03]);
     expect(bytes.every((b) => b < 0x80)).toBe(true);
     expect(new TextDecoder().decode(bytes)).toContain('Pie de limon');
+  });
+
+  it('feeds instead of cutting on a printer without a cutter', () => {
+    const bytes = [...escpos(rows, { cutter: false, openDrawer: false })];
+    expect(bytes.slice(-4)).toEqual([0x0a, 0x0a, 0x0a, 0x0a]);
+    // GS V (cut) appears nowhere.
+    expect(bytes.some((b, i) => b === 0x1d && bytes[i + 1] === 0x56)).toBe(false);
+  });
+
+  it('pulses the cash drawer only when asked', () => {
+    const pulse = [0x1b, 0x70, 0x00, 0x19, 0xfa];
+    expect([...escpos(rows, { cutter: false, openDrawer: true }).slice(2, 7)]).toEqual(pulse);
+    const closed = [...escpos(rows, { cutter: false, openDrawer: false })];
+    expect(closed.some((b, i) => b === 0x1b && closed[i + 1] === 0x70)).toBe(false);
   });
 });

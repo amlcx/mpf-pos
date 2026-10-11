@@ -174,8 +174,9 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
 
 ## Not built yet
 
-- Windows printing (needs the printer model; today `print_raw` writes to a
-  device path such as `/dev/usb/lp0`) and accented characters on tickets.
+- Accented characters on tickets. Windows printing (`pos-native/src/spooler.rs`,
+  raw spooler job to the printer named in Setup) is written but has not been
+  tried on the stores' Xprinter XP-58IIT yet.
 - Editing an existing order (today: void and re-enter).
 - Export of sales to the ERP.
 - Stock movement history and transfers between stores in the panel.

@@ -21,11 +21,16 @@ export interface TerminalConfig {
   printerTarget: string;
   /** Characters per ticket line: 48 for 80mm paper, 32 for 58mm. */
   paperColumns: number;
+  /** The printer has an auto-cutter. */
+  cutter: boolean;
+  /** A cash drawer is plugged into the printer; open it on cash sales. */
+  cashDrawer: boolean;
 }
 
 export async function loadConfig(db: LocalDb): Promise<TerminalConfig | null> {
   const raw = await getKv(db, 'config');
-  return raw ? (JSON.parse(raw) as TerminalConfig) : null;
+  // Configs saved before the printer options existed behave as they did then.
+  return raw ? { cutter: true, cashDrawer: false, ...(JSON.parse(raw) as Partial<TerminalConfig>) } as TerminalConfig : null;
 }
 export const saveConfig = (db: LocalDb, config: TerminalConfig) =>
   db.batch([setKv('config', JSON.stringify(config))]);
