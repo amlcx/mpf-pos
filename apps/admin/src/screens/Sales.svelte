@@ -1,11 +1,12 @@
 <script lang="ts">
+  import { BUSINESS_NAME } from '@mpf/brand';
   import {
     type DateRange,
     type ReportOrder,
     type StockConflict,
     changeDueCents,
     formatCents,
-    ordersCsv,
+    ordersXlsx,
     presets,
     rangeBounds,
     summarize,
@@ -16,7 +17,7 @@
 
   let { storeId }: { storeId: string } = $props();
 
-  // Long ranges can hold thousands of orders; the summary and CSV always cover all of them.
+  // Long ranges can hold thousands of orders; the summary and the export always cover all of them.
   const MAX_ROWS = 300;
   const quick = presets();
   const QUICK_LABEL: [keyof typeof quick, string][] = [
@@ -67,12 +68,19 @@
     void reload();
   });
 
-  function exportCsv() {
-    const days = range.from === range.to ? range.from : `${range.from}_${range.to}`;
-    const url = URL.createObjectURL(new Blob([ordersCsv($state.snapshot(orders))], { type: 'text/csv;charset=utf-8' }));
+  function exportExcel() {
+    const wanted = $state.snapshot(range);
+    const days = wanted.from === wanted.to ? wanted.from : `${wanted.from}_${wanted.to}`;
+    const file = ordersXlsx($state.snapshot(orders), {
+      businessName: BUSINESS_NAME,
+      storeName: store?.name ?? '',
+      range: wanted,
+    });
+    const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const url = URL.createObjectURL(new Blob([file as Uint8Array<ArrayBuffer>], { type }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = `pedidos-${store?.code.toLowerCase() ?? 'tienda'}_${days}.csv`;
+    link.download = `pedidos-${store?.code.toLowerCase() ?? 'tienda'}_${days}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -111,7 +119,7 @@
       <span class="muted">a</span>
       <input type="date" bind:value={range.to} min={range.from} aria-label="Hasta" />
       <span class="spacer"></span>
-      <button class="primary" disabled={orders.length === 0} onclick={exportCsv}>Exportar CSV</button>
+      <button class="primary" disabled={orders.length === 0} onclick={exportExcel}>Exportar a Excel</button>
     </div>
     {#if !validRange(range)}
       <p class="error">Elige una fecha inicial que no sea posterior a la final.</p>
@@ -175,7 +183,7 @@
     </table>
     {#if orders.length > MAX_ROWS}
       <p class="muted">
-        Se muestran los {MAX_ROWS} más recientes de {orders.length}. El resumen y el CSV los incluyen todos.
+        Se muestran los {MAX_ROWS} más recientes de {orders.length}. El resumen y el archivo de Excel los incluyen todos.
       </p>
     {/if}
   </section>

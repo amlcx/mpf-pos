@@ -4,6 +4,7 @@ import {
   addDays,
   buildOrder,
   ordersCsv,
+  ordersXlsx,
   presets,
   rangeBounds,
   summarize,
@@ -71,6 +72,39 @@ describe('reports', () => {
     );
     expect(lines[3]).toContain(';Anulado;');
     expect(ordersCsv([{ ...orders[0]!, cashierName: '=HYPERLINK("x")' }])).toContain(`;"'=HYPERLINK(""x"")";`);
+  });
+
+  it('exports an Excel file with a header, the summary and a table', () => {
+    const voided = { ...orders[2]!, voidedByName: 'Ana <jefa>', voidReason: '=1+1 & más' };
+    const file = ordersXlsx([orders[0]!, orders[1]!, voided], {
+      businessName: 'Mi Postre',
+      storeName: 'Centro',
+      range: { from: '2026-10-07', to: '2026-10-08' },
+      exportedAt: new Date(2026, 9, 9, 8, 30),
+    });
+    // Entries are stored uncompressed, so the parts can be read straight from the bytes.
+    const raw = new TextDecoder().decode(file);
+    expect(raw.startsWith('PK')).toBe(true);
+    for (const text of ['Mi Postre', 'Ventas · Centro', '07/10/2026 a 08/10/2026', '09/10/2026 08:30']) {
+      expect(raw, text).toContain(`<t xml:space="preserve">${text}</t>`);
+    }
+    // Sales leave the voided order out: 60.000, as a number in whole pesos.
+    expect(raw).toContain('<c r="B6" s="5"><v>60000</v></c>');
+    expect(raw).toContain('<c r="B11"><v>1</v></c>');
+    expect(raw).toContain('<c r="B12" s="3"><v>60000</v></c>');
+    // 14 rows above the table, its headings on row 15, then the three orders.
+    expect(raw).toContain('ref="A15:M18"');
+    expect(raw).toContain('<tableColumn id="13" name="Motivo"/>');
+    // 2026-10-07 as a real date, and the total of the first order.
+    expect(raw).toContain('<c r="B16" s="4"><v>46302</v></c>');
+    expect(raw).toContain('<c r="H16" s="3"><v>33000</v></c>');
+    // Text stays text: escaped, never a formula.
+    expect(raw).toContain('Ana &lt;jefa&gt;');
+    expect(raw).toContain('=1+1 &amp; más');
+    expect(raw).not.toContain('<f>');
+
+    const empty = new TextDecoder().decode(ordersXlsx([], { businessName: 'X', storeName: 'Y', range: { from: '2026-10-07', to: '2026-10-07' } }));
+    expect(empty).not.toContain('tables/table1.xml');
   });
 
   it('turns local days into instants', () => {

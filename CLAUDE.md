@@ -157,9 +157,11 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
 - No `window.prompt/alert/confirm`: they are unreliable in webviews.
 - Rust stays thin. Logic that can be TypeScript is TypeScript; anything in
   Rust that is not a Tauri command goes in `pos-native` with a test.
-- Reports: `summarize` and `ordersCsv` in `packages/shared/src/report.ts`
-  are the only place sales figures are computed, for the register, the panel
-  and the CSV alike. Voided orders never count as sales. "Cash" in a report is the cash
+- Reports: `summarize`, `ordersCsv` and `ordersXlsx` in
+  `packages/shared/src/report.ts` are the only place sales figures are
+  computed, for the register, the panel and the exports alike (CSV from the
+  register, Excel from the panel; `xlsx.ts` is our own minimal writer, so no
+  spreadsheet library). Voided orders never count as sales. "Cash" in a report is the cash
   owed (`amountCents`), not the cash handed over. A day means a local
   calendar day on the register.
 - The business name is `BUSINESS_NAME` in `packages/brand`, set in Titan One

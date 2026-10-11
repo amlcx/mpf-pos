@@ -1,4 +1,5 @@
 import type { ReportOrder } from './schemas.ts';
+import { type Cell, dateSerial, xlsx } from './xlsx.ts';
 
 /** Whole local days, both inclusive, as yyyy-mm-dd (what a date input holds). */
 export interface DateRange {
@@ -86,13 +87,37 @@ export function summarize(orders: ReportOrder[], top = 5): Summary {
   return summary;
 }
 
-// CSV for spreadsheets set to Spanish: ";" between columns, "," for decimals,
-// and a BOM so Excel reads the accents. Amounts carry no thousands separator.
+// ---------------------------------------------------------------- exports
+
 const HEADERS = [
   'Tiquete', 'Fecha', 'Hora', 'Cajero', 'Estado', 'Subtotal', 'Impuesto', 'Total',
   'Efectivo', 'Digital', 'Productos', 'Anulado por', 'Motivo',
 ];
 
+/** One order as a line of an export; the columns of HEADERS, not yet formatted. */
+function exportRow(o: ReportOrder) {
+  const at = new Date(o.createdAt);
+  const paid = (method: 'cash' | 'digital') =>
+    o.payments.filter((p) => p.method === method).reduce((sum, p) => sum + p.amountCents, 0);
+  return {
+    ticketNumber: o.ticketNumber,
+    day: localDate(at),
+    time: `${pad(at.getHours())}:${pad(at.getMinutes())}`,
+    cashierName: o.cashierName ?? '',
+    status: o.status === 'voided' ? 'Anulado' : 'Completado',
+    subtotalCents: o.subtotalCents,
+    taxCents: o.taxCents,
+    totalCents: o.totalCents,
+    cashCents: paid('cash'),
+    digitalCents: paid('digital'),
+    products: o.lines.map((l) => `${l.quantity} x ${l.name}`).join(', '),
+    voidedByName: o.voidedByName ?? '',
+    voidReason: o.voidReason ?? '',
+  };
+}
+
+// CSV for spreadsheets set to Spanish: ";" between columns, "," for decimals,
+// and a BOM so Excel reads the accents. Amounts carry no thousands separator.
 function amount(cents: number): string {
   const frac = cents % 100;
   return `${Math.floor(cents / 100)}${frac ? `,${pad(frac)}` : ''}`;
@@ -106,24 +131,69 @@ function text(value: string): string {
 
 export function ordersCsv(orders: ReportOrder[]): string {
   const rows = orders.map((o) => {
-    const at = new Date(o.createdAt);
-    const paid = (method: 'cash' | 'digital') =>
-      o.payments.filter((p) => p.method === method).reduce((sum, p) => sum + p.amountCents, 0);
+    const r = exportRow(o);
     return [
-      text(o.ticketNumber),
-      localDate(at),
-      `${pad(at.getHours())}:${pad(at.getMinutes())}`,
-      text(o.cashierName ?? ''),
-      o.status === 'voided' ? 'Anulado' : 'Completado',
-      amount(o.subtotalCents),
-      amount(o.taxCents),
-      amount(o.totalCents),
-      amount(paid('cash')),
-      amount(paid('digital')),
-      text(o.lines.map((l) => `${l.quantity} x ${l.name}`).join(', ')),
-      text(o.voidedByName ?? ''),
-      text(o.voidReason ?? ''),
+      text(r.ticketNumber), r.day, r.time, text(r.cashierName), r.status,
+      amount(r.subtotalCents), amount(r.taxCents), amount(r.totalCents),
+      amount(r.cashCents), amount(r.digitalCents),
+      text(r.products), text(r.voidedByName), text(r.voidReason),
     ].join(';');
   });
   return `﻿${[HEADERS.join(';'), ...rows].join('\r\n')}\r\n`;
+}
+
+export interface ExportInfo {
+  businessName: string;
+  storeName: string;
+  range: DateRange;
+  exportedAt?: Date;
+}
+
+/**
+ * The same orders as an Excel file: who and what the export covers, the
+ * figures of `summarize`, then every order in a table that can be filtered.
+ */
+export function ordersXlsx(orders: ReportOrder[], info: ExportInfo): Uint8Array {
+  const summary = summarize(orders);
+  const rows = orders.map(exportRow);
+  const exportedAt = info.exportedAt ?? new Date();
+  const day = (iso: string) => iso.split('-').reverse().join('/');
+  // A spreadsheet holds amounts in whole currency units, not minor ones.
+  const money = (cents: number, style: 'money' | 'moneyBold' = 'money'): Cell => ({ value: cents / 100, style });
+  const { from, to } = info.range;
+
+  const sheet: Cell[][] = [
+    [{ value: info.businessName, style: 'title' }],
+    [{ value: `Ventas · ${info.storeName}`, style: 'bold' }],
+    ['Fechas', from === to ? day(from) : `${day(from)} a ${day(to)}`],
+    ['Exportado', `${day(localDate(exportedAt))} ${pad(exportedAt.getHours())}:${pad(exportedAt.getMinutes())}`],
+    [],
+    [{ value: 'Ventas', style: 'bold' }, money(summary.salesCents, 'moneyBold')],
+    ['Pedidos', summary.orderCount],
+    ['Efectivo', money(summary.cashCents)],
+    ['Digital', money(summary.digitalCents)],
+    ['Impuesto', money(summary.taxCents)],
+    ['Pedidos anulados', summary.voidedCount],
+    ['Valor anulado', money(summary.voidedCents)],
+    ['Los pedidos anulados aparecen en la tabla, pero no suman en las ventas.'],
+    [],
+  ];
+  const headerRow = sheet.length;
+  sheet.push(HEADERS);
+  for (const r of rows) {
+    sheet.push([
+      r.ticketNumber, { value: dateSerial(r.day), style: 'date' }, r.time, r.cashierName, r.status,
+      money(r.subtotalCents), money(r.taxCents), money(r.totalCents), money(r.cashCents), money(r.digitalCents),
+      r.products, r.voidedByName, r.voidReason,
+    ]);
+  }
+  const allCents = rows.flatMap((r) => [r.subtotalCents, r.taxCents, r.totalCents, r.cashCents, r.digitalCents]);
+  return xlsx({
+    name: 'Pedidos',
+    rows: sheet,
+    widths: [18, 14, 8, 22, 13, 13, 13, 13, 13, 13, 50, 20, 32],
+    // A table needs at least one line under its headings.
+    table: rows.length > 0 ? { name: 'TablaPedidos', headerRow } : undefined,
+    moneyDecimals: allCents.some((cents) => cents % 100 !== 0),
+  });
 }
