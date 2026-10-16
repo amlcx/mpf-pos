@@ -62,13 +62,35 @@ describe('reports', () => {
     expect(summarize([])).toMatchObject({ orderCount: 0, averageCents: 0, topProducts: [] });
   });
 
+  it('counts loyalty card discounts apart, at what was really charged', () => {
+    const card: ReportOrder = {
+      ...buildOrder({
+        cart: [{ productId: flan, name: 'Flan', unitPriceCents: 1_200_000, quantity: 2 }],
+        payments: [{ method: 'digital', amountCents: 1_200_000 }],
+        cashierId: uuidv7(), terminalCode: 'A', ticketSeq: 99, taxRateBps: 800, taxIncluded: true,
+        discountKind: 'loyalty_card',
+      }),
+      status: 'completed',
+      cashierName: 'Ana',
+    };
+    expect(summarize([orders[1]!, card, { ...card, status: 'voided' }])).toMatchObject({
+      orderCount: 2,
+      salesCents: 2_700_000 + 1_200_000,
+      digitalCents: 2_700_000 + 1_200_000,
+      discountCount: 1,
+      discountCents: 1_200_000,
+      voidedCents: 1_200_000,
+    });
+    expect(ordersCsv([card])).toContain(';Completado;12000;11111,11;888,89;12000;0;12000;2 x Flan;;');
+  });
+
   it('exports a spreadsheet-friendly CSV', () => {
     const csv = ordersCsv(orders);
     expect(csv.startsWith('﻿Tiquete;Fecha;Hora;Cajero;Estado;')).toBe(true);
     const lines = csv.trimEnd().split('\r\n');
     expect(lines).toHaveLength(4);
     expect(lines[1]).toBe(
-      'A-0001;2026-10-07;09:05;"Ana; ""la jefa""";Completado;30555,56;2444,44;33000;10000;23000;2 x Flan, 1 x Café;;',
+      'A-0001;2026-10-07;09:05;"Ana; ""la jefa""";Completado;0;30555,56;2444,44;33000;10000;23000;2 x Flan, 1 x Café;;',
     );
     expect(lines[3]).toContain(';Anulado;');
     expect(ordersCsv([{ ...orders[0]!, cashierName: '=HYPERLINK("x")' }])).toContain(`;"'=HYPERLINK(""x"")";`);
@@ -90,14 +112,14 @@ describe('reports', () => {
     }
     // Sales leave the voided order out: 60.000, as a number in whole pesos.
     expect(raw).toContain('<c r="B6" s="5"><v>60000</v></c>');
-    expect(raw).toContain('<c r="B11"><v>1</v></c>');
-    expect(raw).toContain('<c r="B12" s="3"><v>60000</v></c>');
-    // 14 rows above the table, its headings on row 15, then the three orders.
-    expect(raw).toContain('ref="A15:M18"');
-    expect(raw).toContain('<tableColumn id="13" name="Motivo"/>');
+    expect(raw).toContain('<c r="B13"><v>1</v></c>');
+    expect(raw).toContain('<c r="B14" s="3"><v>60000</v></c>');
+    // 16 rows above the table, its headings on row 17, then the three orders.
+    expect(raw).toContain('ref="A17:N20"');
+    expect(raw).toContain('<tableColumn id="14" name="Motivo"/>');
     // 2026-10-07 as a real date, and the total of the first order.
-    expect(raw).toContain('<c r="B16" s="4"><v>46302</v></c>');
-    expect(raw).toContain('<c r="H16" s="3"><v>33000</v></c>');
+    expect(raw).toContain('<c r="B18" s="4"><v>46302</v></c>');
+    expect(raw).toContain('<c r="I18" s="3"><v>33000</v></c>');
     // Text stays text: escaped, never a formula.
     expect(raw).toContain('Ana &lt;jefa&gt;');
     expect(raw).toContain('=1+1 &amp; más');

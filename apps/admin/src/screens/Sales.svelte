@@ -140,6 +140,13 @@
         <strong>{summary.voidedCount}</strong>
         <small>{money(summary.voidedCents)}</small>
       </div>
+      {#if summary.discountCount > 0}
+        <div class="stat">
+          <span>Tarjetas</span>
+          <strong>{summary.discountCount}</strong>
+          <small>{money(summary.discountCents)} de descuento</small>
+        </div>
+      {/if}
     </div>
 
     {#if conflicts.length > 0}
@@ -174,7 +181,10 @@
             <td>{when(o.createdAt)}</td>
             <td>{o.cashierName ?? ''}</td>
             <td class="num">{money(o.totalCents)}</td>
-            <td>{#if o.status === 'voided'}<span class="pill bad">Anulado</span>{/if}</td>
+            <td>
+              {#if o.status === 'voided'}<span class="pill bad">Anulado</span>{/if}
+              {#if o.discountKind}<span class="pill warn">Tarjeta</span>{/if}
+            </td>
           </tr>
         {:else}
           <tr><td colspan="5" class="muted">No hay pedidos en estas fechas.</td></tr>
@@ -213,6 +223,10 @@
           <dt>{line.quantity} × {line.name}</dt>
           <dd>{money(line.lineTotalCents)}</dd>
         {/each}
+        {#if selected.discountKind}
+          <dt>Tarjeta de fidelidad</dt>
+          <dd>{money(-selected.discountCents)}</dd>
+        {/if}
         <dt class="total">Total</dt>
         <dd>{money(selected.totalCents)}</dd>
         {#each selected.payments as p (p.id)}

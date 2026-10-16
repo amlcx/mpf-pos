@@ -127,12 +127,12 @@ pre { margin: 0.5rem 0 0; padding: 0.7rem; background: #fff; border: 1px dashed 
 .toast .close { width: 2.2rem; height: 2.2rem; padding: 0; border-color: transparent; font-size: 1.2rem; line-height: 1; color: var(--muted); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } }
 .filters > input { flex: 0 0 auto; width: auto; min-width: 0; }
-.stats { display: grid; grid-template-columns: 1.6fr repeat(4, 1fr); gap: 0.6rem; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.6rem; }
 .stat { display: grid; gap: 0.1rem; align-content: start; padding: 0.75rem 0.9rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
 .stat span { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .stat strong { font-size: 1.3rem; font-variant-numeric: tabular-nums; color: var(--on-brand); }
 .stat small { color: var(--muted); }
-.stat.main { background: var(--brand-soft); border-color: var(--brand); }
+.stat.main { grid-column: span 2; background: var(--brand-soft); border-color: var(--brand); }
 .stat.main strong { font-size: 1.9rem; }
 .top { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.35rem; }
 .top li { display: flex; gap: 0.6rem; align-items: baseline; padding-bottom: 0.35rem; border-bottom: 1px solid var(--line); }
@@ -141,7 +141,19 @@ pre { margin: 0.5rem 0 0; padding: 0.7rem; background: #fff; border: 1px dashed 
 
 .overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgb(61 15 36 / 0.45); }
 .overlay .row > button { flex: 1; padding: 0.8rem; }
-.change { font-size: 1.5rem; font-weight: 800; color: var(--brand-strong); }
+.pay { display: grid; grid-template-columns: 17rem 1fr; width: min(52rem, calc(100vw - 2rem)); min-height: min(30rem, calc(100vh - 2rem)); padding: 0; overflow: hidden; gap: 0; font-size: 1.05rem; }
+.pay .due { display: grid; gap: 0.55rem; align-content: start; padding: 1.75rem 1.5rem; background: var(--brand-soft); border-right: 1px solid var(--line); }
+.pay .due p { display: flex; justify-content: space-between; gap: 0.75rem; font-variant-numeric: tabular-nums; }
+.pay .due .total { padding-top: 0.55rem; border-top: 1px solid var(--brand); font-size: 1.35rem; font-weight: 800; color: var(--on-brand); }
+.pay .due .pending { display: grid; gap: 0.1rem; margin-top: 0.75rem; padding: 0.9rem 1rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.pay .due .pending span { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.pay .due .pending strong { font-size: 2rem; font-variant-numeric: tabular-nums; color: var(--bad); }
+.pay .due .pending.settled strong { color: var(--good); }
+.pay .fields { display: flex; flex-direction: column; gap: 1rem; padding: 1.75rem 1.5rem; }
+.pay .fields input:not([type='checkbox']) { padding: 0.8rem 0.9rem; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+.pay .fields .row:last-child { margin-top: auto; }
+.pay label.check { padding: 0.7rem 0.9rem; border: 1px solid var(--line); border-radius: var(--radius); color: var(--text); }
+.pay label.check.on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-strong); font-weight: 600; }
 
 .split { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 26rem; }
 .split > section { padding: 1rem; overflow-y: auto; display: grid; gap: 0.75rem; align-content: start; }

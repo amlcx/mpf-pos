@@ -50,13 +50,16 @@ export interface Summary {
   itemCount: number;
   voidedCount: number;
   voidedCents: number;
+  /** Completed orders sold with a discount, and how much the discounts took off. */
+  discountCount: number;
+  discountCents: number;
   topProducts: { name: string; quantity: number; totalCents: number }[];
 }
 
 export function summarize(orders: ReportOrder[], top = 5): Summary {
   const summary: Summary = {
     orderCount: 0, salesCents: 0, taxCents: 0, averageCents: 0, cashCents: 0, digitalCents: 0,
-    itemCount: 0, voidedCount: 0, voidedCents: 0, topProducts: [],
+    itemCount: 0, voidedCount: 0, voidedCents: 0, discountCount: 0, discountCents: 0, topProducts: [],
   };
   const products = new Map<string, Summary['topProducts'][number]>();
   for (const order of orders) {
@@ -68,6 +71,10 @@ export function summarize(orders: ReportOrder[], top = 5): Summary {
     summary.orderCount += 1;
     summary.salesCents += order.totalCents;
     summary.taxCents += order.taxCents;
+    if (order.discountKind) {
+      summary.discountCount += 1;
+      summary.discountCents += order.discountCents;
+    }
     for (const p of order.payments) {
       if (p.method === 'cash') summary.cashCents += p.amountCents;
       else summary.digitalCents += p.amountCents;
@@ -90,7 +97,7 @@ export function summarize(orders: ReportOrder[], top = 5): Summary {
 // ---------------------------------------------------------------- exports
 
 const HEADERS = [
-  'Tiquete', 'Fecha', 'Hora', 'Cajero', 'Estado', 'Subtotal', 'Impuesto', 'Total',
+  'Tiquete', 'Fecha', 'Hora', 'Cajero', 'Estado', 'Descuento', 'Subtotal', 'Impuesto', 'Total',
   'Efectivo', 'Digital', 'Productos', 'Anulado por', 'Motivo',
 ];
 
@@ -105,6 +112,7 @@ function exportRow(o: ReportOrder) {
     time: `${pad(at.getHours())}:${pad(at.getMinutes())}`,
     cashierName: o.cashierName ?? '',
     status: o.status === 'voided' ? 'Anulado' : 'Completado',
+    discountCents: o.discountCents,
     subtotalCents: o.subtotalCents,
     taxCents: o.taxCents,
     totalCents: o.totalCents,
@@ -134,7 +142,7 @@ export function ordersCsv(orders: ReportOrder[]): string {
     const r = exportRow(o);
     return [
       text(r.ticketNumber), r.day, r.time, text(r.cashierName), r.status,
-      amount(r.subtotalCents), amount(r.taxCents), amount(r.totalCents),
+      amount(r.discountCents), amount(r.subtotalCents), amount(r.taxCents), amount(r.totalCents),
       amount(r.cashCents), amount(r.digitalCents),
       text(r.products), text(r.voidedByName), text(r.voidReason),
     ].join(';');
@@ -173,6 +181,8 @@ export function ordersXlsx(orders: ReportOrder[], info: ExportInfo): Uint8Array 
     ['Efectivo', money(summary.cashCents)],
     ['Digital', money(summary.digitalCents)],
     ['Impuesto', money(summary.taxCents)],
+    ['Pedidos con tarjeta', summary.discountCount],
+    ['Descuento tarjetas', money(summary.discountCents)],
     ['Pedidos anulados', summary.voidedCount],
     ['Valor anulado', money(summary.voidedCents)],
     ['Los pedidos anulados aparecen en la tabla, pero no suman en las ventas.'],
@@ -183,15 +193,16 @@ export function ordersXlsx(orders: ReportOrder[], info: ExportInfo): Uint8Array 
   for (const r of rows) {
     sheet.push([
       r.ticketNumber, { value: dateSerial(r.day), style: 'date' }, r.time, r.cashierName, r.status,
-      money(r.subtotalCents), money(r.taxCents), money(r.totalCents), money(r.cashCents), money(r.digitalCents),
+      money(r.discountCents), money(r.subtotalCents), money(r.taxCents), money(r.totalCents),
+      money(r.cashCents), money(r.digitalCents),
       r.products, r.voidedByName, r.voidReason,
     ]);
   }
-  const allCents = rows.flatMap((r) => [r.subtotalCents, r.taxCents, r.totalCents, r.cashCents, r.digitalCents]);
+  const allCents = rows.flatMap((r) => [r.discountCents, r.subtotalCents, r.taxCents, r.totalCents, r.cashCents, r.digitalCents]);
   return xlsx({
     name: 'Pedidos',
     rows: sheet,
-    widths: [18, 14, 8, 22, 13, 13, 13, 13, 13, 13, 50, 20, 32],
+    widths: [20, 14, 8, 22, 13, 13, 13, 13, 13, 13, 13, 50, 20, 32],
     // A table needs at least one line under its headings.
     table: rows.length > 0 ? { name: 'TablaPedidos', headerRow } : undefined,
     moneyDecimals: allCents.some((cents) => cents % 100 !== 0),

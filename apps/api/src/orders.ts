@@ -46,6 +46,8 @@ export async function submitOrder(
           stockPolicy,
           taxRateBps: order.taxRateBps,
           taxIncluded: order.taxIncluded,
+          discountKind: order.discountKind,
+          discountCents: order.discountCents,
           subtotalCents: order.subtotalCents,
           taxCents: order.taxCents,
           totalCents: order.totalCents,

@@ -168,6 +168,13 @@
         <strong>{summary.voidedCount}</strong>
         <small>{money(summary.voidedCents)}</small>
       </div>
+      {#if summary.discountCount > 0}
+        <div class="stat">
+          <span>Tarjetas</span>
+          <strong>{summary.discountCount}</strong>
+          <small>{money(summary.discountCents)} de descuento</small>
+        </div>
+      {/if}
     </div>
 
     {#if conflicts.length > 0}
@@ -209,6 +216,7 @@
             <td class="num">{money(o.totalCents)}</td>
             <td>
               {#if o.status === 'voided'}<span class="pill bad">Anulado</span>{/if}
+              {#if o.discountKind}<span class="pill warn">Tarjeta</span>{/if}
               {#if mine}
                 <span class="pill {mine.syncStatus === 'synced' ? 'good' : mine.syncStatus === 'failed' ? 'bad' : 'warn'}">
                   {SYNC_LABEL[mine.syncStatus]}

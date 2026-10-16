@@ -44,6 +44,10 @@ const MIGRATIONS: string[][] = [
     `create index payments_order_idx on payments (order_id)`,
   ],
   [`alter table products add column sold_out integer not null default 0`],
+  [
+    `alter table orders add column discount_kind text`,
+    `alter table orders add column discount_cents integer not null default 0`,
+  ],
 ];
 
 export async function getKv(db: LocalDb, key: string): Promise<string | null> {

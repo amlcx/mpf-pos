@@ -34,6 +34,24 @@ describe('ticket', () => {
     });
   }
 
+  it('shows a loyalty card discount between the lines and the total', () => {
+    const half = buildOrder({
+      cart: [{ productId: uuidv7(), name: 'Flan', unitPriceCents: 1_200_000, quantity: 2 }],
+      payments: [{ method: 'digital', amountCents: 1_200_000 }],
+      cashierId: uuidv7(), terminalCode: 'A', ticketSeq: 7, taxRateBps: 0, taxIncluded: true,
+      discountKind: 'loyalty_card',
+    });
+    for (const columns of [48, 32]) {
+      const rows = ticketRows({ businessName: 'Mi Postre Favorito', storeName: 'Main', cashierName: 'Ana', order: half, columns });
+      for (const row of rows) expect(row.text.length).toBeLessThanOrEqual(row.big ? columns / 2 : columns);
+      const text = ticketText(rows, columns);
+      expect(text).toMatch(/2 x Flan +24\.000$/m);
+      expect(text).toMatch(/Descuento tarjeta 50% +-12\.000$/m);
+      expect(text).toMatch(/TOTAL +12\.000$/m);
+    }
+    expect(ticketText(rows, 48)).not.toContain('Descuento');
+  });
+
   const rows = ticketRows({ businessName: 'Mi Postre Favorito', storeName: 'Main Store', cashierName: 'Ana', order, columns: 48 });
 
   it('encodes ESC/POS as plain ASCII ending in a cut', () => {

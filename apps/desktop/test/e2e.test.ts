@@ -186,6 +186,32 @@ describe('terminals against the server', () => {
     expect(await b.sell({ coffee: 1 })).toMatchObject({ ok: true, synced: true });
   });
 
+  it('a loyalty card sale is charged at half, online or offline, and survives the sync', async () => {
+    const coffee = (await listProducts(a.db)).find((p) => p.id === w.products.coffee)!;
+    const sale = (online: boolean) =>
+      checkout(a, {
+        cart: [{ productId: coffee.id, name: coffee.name, unitPriceCents: coffee.priceCents, quantity: 2 }],
+        payments: [{ method: 'cash', amountCents: coffee.priceCents, tenderedCents: coffee.priceCents }],
+        cashierId: w.cashierId,
+        discountKind: 'loyalty_card',
+        online,
+      });
+    const online = await sale(true);
+    expect(online).toMatchObject({ ok: true, synced: true, order: { discountKind: 'loyalty_card', totalCents: coffee.priceCents } });
+
+    a.net.up = false;
+    const offline = await sale(false);
+    a.net.up = true;
+    if (!online.ok || !offline.ok) throw new Error('unreachable');
+    expect(offline.order).toMatchObject({ syncStatus: 'pending', discountCents: coffee.priceCents });
+    await syncOnce(a);
+    expect((await getOrder(a.db, offline.order.id))!.syncStatus).toBe('synced');
+    const rows = await w.sql`
+      select discount_kind, discount_cents, total_cents from orders where id in ${w.sql([online.order.id, offline.order.id])}`;
+    const stored = { discountKind: 'loyalty_card', discountCents: coffee.priceCents, totalCents: coffee.priceCents };
+    expect(rows).toEqual([stored, stored]);
+  });
+
   it('logs in offline with cached credentials, without admin powers', async () => {
     a.net.up = false;
     expect(await login(a, 'cashier', 'wrong')).toBeNull();

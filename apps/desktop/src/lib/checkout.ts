@@ -1,5 +1,6 @@
 import {
   type CartItem,
+  type DiscountKind,
   type InsufficientStockItem,
   type PaymentInput,
   buildOrder,
@@ -18,6 +19,7 @@ export interface CheckoutInput {
   cart: CartItem[];
   payments: PaymentInput[];
   cashierId: string;
+  discountKind?: DiscountKind | null;
   /** Skip the server round trip when we already know we are offline. */
   online: boolean;
   now?: Date;
@@ -56,6 +58,7 @@ async function checkoutNow(deps: SyncDeps, input: CheckoutInput): Promise<Checko
     cart: input.cart,
     payments: input.payments,
     cashierId: input.cashierId,
+    discountKind: input.discountKind,
     terminalCode: context.terminal.code,
     ticketSeq: context.nextTicketSeq,
     taxRateBps: context.store.taxRateBps,

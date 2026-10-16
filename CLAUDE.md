@@ -55,6 +55,12 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
   never stored as its own payment.
 - An order snapshots product name, unit price and tax rate at the time of
   sale. Later catalog edits never change past orders.
+- An order may carry one discount, identified by `discountKind`. Its amount
+  is never free: `discountCentsFor` derives it from the kind (`loyalty_card`
+  is half the sum of the lines) and the API rejects any other figure. Lines
+  keep their full prices; the discount comes off before tax is worked out.
+  Reports count discounted orders at what was charged and total the
+  discounts apart.
 
 ### Orders
 - The register generates the order id (UUIDv7). That id is the idempotency

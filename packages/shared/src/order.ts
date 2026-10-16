@@ -1,5 +1,5 @@
-import { computeTotals } from './money.ts';
-import type { Order, OrderLine, Payment, PaymentMethod } from './schemas.ts';
+import { computeTotals, discountCentsFor } from './money.ts';
+import type { DiscountKind, Order, OrderLine, Payment, PaymentMethod } from './schemas.ts';
 import { uuidv7 } from './uuid.ts';
 
 export function ticketNumber(terminalCode: string, seq: number): string {
@@ -27,6 +27,7 @@ export function buildOrder(input: {
   ticketSeq: number;
   taxRateBps: number;
   taxIncluded: boolean;
+  discountKind?: DiscountKind | null;
   now?: Date;
 }): Order {
   const now = input.now ?? new Date();
@@ -44,6 +45,8 @@ export function buildOrder(input: {
     amountCents: p.amountCents,
     tenderedCents: p.method === 'cash' ? (p.tenderedCents ?? p.amountCents) : null,
   }));
+  const lineTotals = lines.map((l) => l.lineTotalCents);
+  const discountKind = input.discountKind ?? null;
   return {
     id: uuidv7(now.getTime()),
     cashierId: input.cashierId,
@@ -52,10 +55,12 @@ export function buildOrder(input: {
     createdAt: now.toISOString(),
     taxRateBps: input.taxRateBps,
     taxIncluded: input.taxIncluded,
+    discountKind,
     ...computeTotals(
-      lines.map((l) => l.lineTotalCents),
+      lineTotals,
       input.taxRateBps,
       input.taxIncluded,
+      discountCentsFor(discountKind, lineTotals),
     ),
     lines,
     payments,
@@ -74,11 +79,12 @@ export function orderProblems(order: Order): string[] {
       problems.push(`line "${line.name}": total is not unit price x quantity`);
     }
   }
-  const totals = computeTotals(
-    order.lines.map((l) => l.lineTotalCents),
-    order.taxRateBps,
-    order.taxIncluded,
-  );
+  // A discount is never a free amount: its kind fixes how much it is.
+  const lineTotals = order.lines.map((l) => l.lineTotalCents);
+  if (order.discountCents !== discountCentsFor(order.discountKind, lineTotals)) {
+    problems.push('discount does not match its kind');
+  }
+  const totals = computeTotals(lineTotals, order.taxRateBps, order.taxIncluded, order.discountCents);
   if (
     totals.subtotalCents !== order.subtotalCents ||
     totals.taxCents !== order.taxCents ||

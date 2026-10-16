@@ -2,6 +2,7 @@ import { BUSINESS_NAME } from '@mpf/brand';
 import {
   type CartItem,
   type DateRange,
+  type DiscountKind,
   type PaymentInput,
   type ProductInput,
   type ReportOrder,
@@ -143,10 +144,15 @@ export function signOut(): void {
 
 // ------------------------------------------------------------------ selling
 
-export async function sell(cart: CartItem[], payments: PaymentInput[]): Promise<CheckoutResult> {
+export async function sell(
+  cart: CartItem[],
+  payments: PaymentInput[],
+  discountKind: DiscountKind | null = null,
+): Promise<CheckoutResult> {
   const result = await checkout(deps(), {
     cart,
     payments,
+    discountKind,
     cashierId: app.session!.user.id,
     online: app.online,
   });

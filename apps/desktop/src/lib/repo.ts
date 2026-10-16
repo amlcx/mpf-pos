@@ -147,12 +147,12 @@ export function insertOrder(order: Order, syncStatus: SyncStatus): Statement[] {
   return [
     {
       sql: `insert into orders (id, cashier_id, ticket_seq, ticket_number, created_at, tax_rate_bps,
-              tax_included, subtotal_cents, tax_cents, total_cents, sync_status)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              tax_included, discount_kind, discount_cents, subtotal_cents, tax_cents, total_cents, sync_status)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
         order.id, order.cashierId, order.ticketSeq, order.ticketNumber, order.createdAt,
-        order.taxRateBps, +order.taxIncluded, order.subtotalCents, order.taxCents,
-        order.totalCents, syncStatus,
+        order.taxRateBps, +order.taxIncluded, order.discountKind, order.discountCents,
+        order.subtotalCents, order.taxCents, order.totalCents, syncStatus,
       ],
     },
     ...order.lines.map((l) => ({
@@ -207,7 +207,8 @@ export function markSynced(orderId: string, opts: { oversold: boolean; adjustSto
 
 const ORDER_SELECT = `select id, cashier_id as cashierId, ticket_seq as ticketSeq,
   ticket_number as ticketNumber, created_at as createdAt, tax_rate_bps as taxRateBps,
-  tax_included as taxIncluded, subtotal_cents as subtotalCents, tax_cents as taxCents,
+  tax_included as taxIncluded, discount_kind as discountKind, discount_cents as discountCents,
+  subtotal_cents as subtotalCents, tax_cents as taxCents,
   total_cents as totalCents, status, sync_status as syncStatus, sync_error as syncError, oversold,
   (select name from users where users.id = orders.cashier_id) as cashierName
   from orders`;

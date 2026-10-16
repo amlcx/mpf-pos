@@ -1,4 +1,4 @@
-import { type Order, changeDueCents, formatCents } from '@mpf/shared';
+import { DISCOUNT_BPS, type DiscountKind, type Order, changeDueCents, formatCents } from '@mpf/shared';
 
 /** One printed row. `big` rows are double size, so they hold half the columns. */
 export interface TicketRow {
@@ -18,6 +18,7 @@ export interface TicketData {
 
 // Printed text is for customers, so it is Spanish like the rest of the UI.
 const METHOD_LABEL = { cash: 'Efectivo', digital: 'Digital' } as const;
+const DISCOUNT_LABEL: Record<DiscountKind, string> = { loyalty_card: 'Descuento tarjeta' };
 
 /** "left ........ right", truncating the left side to fit. */
 function pair(left: string, right: string, columns: number): string {
@@ -46,6 +47,10 @@ export function ticketRows({ businessName, storeName, cashierName, order, column
     rows.push({ text: pair(`${line.quantity} x ${line.name}`, money(line.lineTotalCents), columns) });
   }
   rows.push({ text: rule });
+  if (order.discountKind) {
+    const label = `${DISCOUNT_LABEL[order.discountKind]} ${DISCOUNT_BPS[order.discountKind] / 100}%`;
+    rows.push({ text: pair(label, money(-order.discountCents), columns) });
+  }
   if (order.taxCents > 0) {
     const rate = `${String(order.taxRateBps / 100).replace('.', ',')}%`;
     rows.push(

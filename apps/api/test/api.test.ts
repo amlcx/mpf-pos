@@ -1,4 +1,4 @@
-import type { PullResponse } from '@mpf/shared';
+import { type PullResponse, buildOrder } from '@mpf/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createStore, createTerminal } from '../src/fixtures.ts';
 import { type World, call, createWorld, makeOrder, stockOf } from './helpers.ts';
@@ -125,6 +125,38 @@ describe('orders and stock', () => {
     const pull = await call<PullResponse>(w.app, tokenA(), 'GET', '/sync/pull');
     expect(pull.json.voidedOrderIds).toEqual([order.id]);
     expect(pull.json.terminal.lastTicketSeq).toBeGreaterThanOrEqual(seq);
+  });
+
+  it('records a loyalty card discount and refuses any other amount', async () => {
+    const full = makeOrder(w, 'A', ++seq, { coffee: 2 }); // 1800
+    const order = buildOrder({
+      cart: full.lines.map((l) => ({ productId: l.productId, name: l.name, unitPriceCents: l.unitPriceCents, quantity: l.quantity })),
+      payments: [{ method: 'cash', amountCents: 900, tenderedCents: 1000 }],
+      cashierId: w.cashierId, terminalCode: 'A', ticketSeq: seq, taxRateBps: 1300, taxIncluded: true,
+      discountKind: 'loyalty_card',
+    });
+    expect(order).toMatchObject({ discountCents: 900, totalCents: 900 });
+
+    const greedy = { ...order, id: full.id, discountCents: 1800, subtotalCents: 0, taxCents: 0, totalCents: 0, payments: [] };
+    const refused = await call(w.app, tokenA(), 'POST', '/orders', { order: greedy, stockPolicy: 'strict' });
+    expect(refused.status).toBe(400);
+    expect(refused.json.problems).toContain('discount does not match its kind');
+
+    const res = await call(w.app, tokenA(), 'POST', '/orders', { order, stockPolicy: 'strict' });
+    expect(res.json.status).toBe('accepted');
+    const [row] = await w.sql`select discount_kind, discount_cents, total_cents from orders where id = ${order.id}`;
+    expect(row).toEqual({ discountKind: 'loyalty_card', discountCents: 900, totalCents: 900 });
+    const range = `from=${new Date(Date.now() - 3_600_000).toISOString()}&to=${new Date(Date.now() + 3_600_000).toISOString()}`;
+    const report = await call(w.app, tokenA(), 'GET', `/admin/orders?${range}`, undefined, adminSession);
+    expect(report.json.orders.find((o: { id: string }) => o.id === order.id)).toMatchObject({
+      discountKind: 'loyalty_card',
+      discountCents: 900,
+    });
+
+    // A register not yet updated sends no discount fields at all.
+    const { discountKind: _, discountCents: __, ...old } = makeOrder(w, 'A', ++seq, { coffee: 1 });
+    const plain = await call(w.app, tokenA(), 'POST', '/orders', { order: old, stockPolicy: 'strict' });
+    expect(plain.json.status).toBe('accepted');
   });
 
   it('lets a cashier void, recording who and why', async () => {

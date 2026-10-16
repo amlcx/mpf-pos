@@ -77,7 +77,7 @@ export async function listOrders(sql: Sql, storeId: string, from: string, to: st
   const inRange = sql`o.store_id = ${storeId} and o.created_at >= ${from} and o.created_at < ${to}`;
   const orders = await sql<Omit<ReportOrder, 'lines' | 'payments'>[]>`
     select o.id, o.cashier_id, o.ticket_seq, o.ticket_number, o.created_at, o.tax_rate_bps,
-      o.tax_included, o.subtotal_cents, o.tax_cents, o.total_cents, o.status, u.name as cashier_name,
+      o.tax_included, o.discount_kind, o.discount_cents, o.subtotal_cents, o.tax_cents, o.total_cents, o.status, u.name as cashier_name,
       vu.name as voided_by_name, o.void_reason
     from orders o join users u on u.id = o.cashier_id left join users vu on vu.id = o.voided_by
     where ${inRange} order by o.created_at desc`;

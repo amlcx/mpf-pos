@@ -3,6 +3,7 @@ import * as v from 'valibot';
 export const PAYMENT_METHODS = ['cash', 'digital'] as const;
 export const ROLES = ['admin', 'cashier'] as const;
 export const STOCK_POLICIES = ['strict', 'accept'] as const;
+export const DISCOUNT_KINDS = ['loyalty_card'] as const;
 
 const Id = v.pipe(v.string(), v.uuid());
 const Cents = v.pipe(v.number(), v.safeInteger(), v.minValue(0));
@@ -90,6 +91,10 @@ export const OrderSchema = v.object({
   createdAt: Timestamp,
   taxRateBps: v.pipe(v.number(), v.safeInteger(), v.minValue(0), v.maxValue(10_000)),
   taxIncluded: v.boolean(),
+  /** Why this order was discounted, if it was. Registers older than discounts send neither field. */
+  discountKind: v.optional(v.nullable(v.picklist(DISCOUNT_KINDS)), null),
+  /** What came off the sum of the lines, before tax was worked out. */
+  discountCents: v.optional(Cents, 0),
   subtotalCents: Cents,
   taxCents: Cents,
   totalCents: Cents,
@@ -97,6 +102,7 @@ export const OrderSchema = v.object({
   payments: v.pipe(v.array(PaymentSchema), v.maxLength(20)),
 });
 export type Order = v.InferOutput<typeof OrderSchema>;
+export type DiscountKind = NonNullable<Order['discountKind']>;
 
 export const SubmitOrderRequestSchema = v.object({
   order: OrderSchema,

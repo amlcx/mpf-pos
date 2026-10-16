@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { type CartItem, type PaymentInput, computeTotals, formatCents } from '@mpf/shared';
+  import { type CartItem, type PaymentInput, computeTotals, discountCentsFor, formatCents } from '@mpf/shared';
   import type { LocalOrder, LocalProduct } from '../lib/repo.ts';
   import { app, printTicket, sell, setSoldOut } from '../lib/state.svelte.ts';
   import Payment from './Payment.svelte';
@@ -28,8 +28,12 @@
       (p) => (!category || p.category === category) && p.name.toLowerCase().includes(search.trim().toLowerCase()),
     ),
   );
+  // Ticked in the payment pop-up when the customer hands in a filled loyalty card.
+  let loyalty = $state(false);
+  const discountKind = $derived(loyalty ? ('loyalty_card' as const) : null);
+  const lineTotals = $derived(cart.map((i) => i.unitPriceCents * i.quantity));
   const totals = $derived(
-    computeTotals(cart.map((i) => i.unitPriceCents * i.quantity), store.taxRateBps, store.taxIncluded),
+    computeTotals(lineTotals, store.taxRateBps, store.taxIncluded, discountCentsFor(discountKind, lineTotals)),
   );
 
   const inCart = (id: string) => cart.find((i) => i.productId === id)?.quantity ?? 0;
@@ -65,10 +69,38 @@
     if (product) add(product);
   }
 
+  function charge() {
+    if (cart.length === 0) return;
+    notice = null;
+    loyalty = false;
+    paying = true;
+  }
+
+  function closePayment() {
+    paying = false;
+    loyalty = false;
+  }
+
+  // Space would otherwise press whichever button was clicked last, usually a
+  // product. A button fires on key release, so that is swallowed too.
+  let spaceTaken = false;
+  function onKeyUp(event: KeyboardEvent) {
+    if (event.key !== ' ' || !spaceTaken) return;
+    spaceTaken = false;
+    event.preventDefault();
+  }
+
   function onKey(event: KeyboardEvent) {
     if (event.key === 'Escape' && done && !paying) return void (done = null);
-    if (paying || !activeId || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (paying || event.ctrlKey || event.metaKey || event.altKey) return;
     if ((event.target as HTMLElement).closest('input, select, textarea')) return;
+    if (event.key === ' ') {
+      event.preventDefault();
+      spaceTaken = true;
+      if (!event.repeat && !marking) charge();
+      return;
+    }
+    if (!activeId) return;
     // "=" is the unshifted "+" on most keyboards.
     if (event.key === '+' || event.key === '=') {
       event.preventDefault();
@@ -88,7 +120,7 @@
   async function pay(payments: PaymentInput[]) {
     busy = true;
     try {
-      const result = await sell($state.snapshot(cart), payments);
+      const result = await sell($state.snapshot(cart), payments, discountKind);
       if (result.ok) {
         clear();
         const printError = await printTicket(result.order, true);
@@ -111,7 +143,7 @@
       notice = String(err);
     }
     busy = false;
-    paying = false;
+    closePayment();
   }
 
   let printing = $state(false);
@@ -131,7 +163,7 @@
   }
 </script>
 
-<svelte:window onkeydown={onKey} />
+<svelte:window onkeydown={onKey} onkeyup={onKeyUp} />
 
 <div class="pos">
   <section class="catalog">
@@ -197,9 +229,12 @@
       {/each}
     </ul>
     {#if activeId}
-      <p class="hint"><kbd>+</kbd> <kbd>−</kbd> cambian la cantidad del producto resaltado</p>
+      <p class="hint"><kbd>+</kbd> <kbd>−</kbd> cambian la cantidad del producto resaltado · <kbd>Espacio</kbd> cobra</p>
     {/if}
     <div class="totals">
+      {#if totals.discountCents > 0}
+        <p><span>Tarjeta de fidelidad</span><span>{formatCents(-totals.discountCents, symbol)}</span></p>
+      {/if}
       {#if totals.taxCents > 0}
         <p><span>Subtotal</span><span>{formatCents(totals.subtotalCents, symbol)}</span></p>
         <p><span>Impuesto {String(store.taxRateBps / 100).replace('.', ',')}%</span><span>{formatCents(totals.taxCents, symbol)}</span></p>
@@ -207,7 +242,7 @@
       <p class="total"><span>Total</span><span>{formatCents(totals.totalCents, symbol)}</span></p>
       <div class="row">
         <button disabled={cart.length === 0} onclick={clear}>Vaciar</button>
-        <button class="primary" disabled={cart.length === 0} onclick={() => { notice = null; paying = true; }}>
+        <button class="primary" disabled={cart.length === 0} onclick={charge}>
           Cobrar
         </button>
       </div>
@@ -228,5 +263,14 @@
 {/if}
 
 {#if paying}
-  <Payment totalCents={totals.totalCents} {symbol} {busy} onconfirm={pay} oncancel={() => (paying = false)} />
+  <Payment
+    itemsCents={lineTotals.reduce((sum, n) => sum + n, 0)}
+    {totals}
+    taxIncluded={store.taxIncluded}
+    {symbol}
+    {busy}
+    bind:loyalty
+    onconfirm={pay}
+    oncancel={closePayment}
+  />
 {/if}
