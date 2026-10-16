@@ -222,7 +222,7 @@
           </button>
         {/if}
       {:else}
-        <p class="muted">No hay productos.</p>
+        <p class="muted hand">No hay productos.</p>
       {/each}
     </div>
   </section>

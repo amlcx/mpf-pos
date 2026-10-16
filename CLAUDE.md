@@ -176,8 +176,10 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
   owed (`amountCents`), not the cash handed over. A day means a local
   calendar day on the register.
 - The business name is `BUSINESS_NAME` in `packages/brand`, set in Titan One
-  (class `brand-name`). The font is bundled, not fetched: the register must
-  look the same offline.
+  (class `brand-name`). The company style guide's fonts: Nunito for text,
+  Titan One for the name and headings, Patrick Hand only for small friendly
+  touches (class `hand`: empty states, hints). Fonts are bundled, not
+  fetched: the register must look the same offline.
 - Tickets are plain text laid out to a column count (48 for 80 mm, 32 for
   58 mm) and sent as raw ESC/POS. No images, no driver-dependent layout.
 - Everything a cashier or customer reads is Spanish (Colombia): screens,
@@ -186,10 +188,10 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
 - Amounts are shown and typed the Colombian way (`$12.000`, decimals after a
   comma and hidden when zero). Only `formatCents` / `parseCents` know this.
 - Both apps share `packages/brand/theme.css`. Colours come from the tokens at
-  its top; no
-  hard-coded colours in screens. The brand pink `#ee6fa0` is too light for
-  white text: pair it with `--on-brand`, and use `--brand-strong` for pink
-  text on light surfaces.
+  its top, which follow the style guide's palette; no hard-coded colours in
+  screens. Text stays at 4.5:1 contrast or better. The guide's pink and red
+  are too light for that, so they are fills and borders only: on pink use
+  `--on-brand` (never white), pink text is `--brand-strong`, red text `--bad`.
 
 ## Not built yet
 

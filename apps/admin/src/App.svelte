@@ -50,7 +50,7 @@
     {:else if tab === 'stores'}
       <Stores />
     {:else if !panel.storeId}
-      <div class="centered"><p class="muted">Aún no hay tiendas. Crea la primera en “Tienda y cajas”.</p></div>
+      <div class="centered"><p class="muted hand">Aún no hay tiendas. Crea la primera en “Tienda y cajas”.</p></div>
     {:else if tab === 'sales'}
       {#key panel.storeId}<Sales storeId={panel.storeId} />{/key}
     {:else}

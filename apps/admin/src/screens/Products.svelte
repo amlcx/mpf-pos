@@ -117,7 +117,7 @@
             </td>
           </tr>
         {:else}
-          <tr><td colspan="5" class="muted">No hay productos.</td></tr>
+          <tr><td colspan="5" class="muted hand">No hay productos.</td></tr>
         {/each}
       </tbody>
     </table>

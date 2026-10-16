@@ -187,7 +187,7 @@
             </td>
           </tr>
         {:else}
-          <tr><td colspan="5" class="muted">No hay pedidos en estas fechas.</td></tr>
+          <tr><td colspan="5" class="muted hand">No hay pedidos en estas fechas.</td></tr>
         {/each}
       </tbody>
     </table>
@@ -255,9 +255,9 @@
           {/each}
         </ol>
       {:else}
-        <p class="muted">Aún no hay ventas en estas fechas.</p>
+        <p class="muted hand">Aún no hay ventas en estas fechas.</p>
       {/if}
-      <p class="muted">Selecciona un pedido para ver su detalle.</p>
+      <p class="muted hand">Selecciona un pedido para ver su detalle.</p>
     {/if}
   </section>
 </div>
