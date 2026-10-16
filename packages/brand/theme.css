@@ -95,7 +95,12 @@ header .pill, header button.pill:hover:not(:disabled) { background: var(--surfac
 .pill.bad { color: var(--bad); }
 
 .pos { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 24rem; }
-.catalog { padding: 1rem; overflow-y: auto; display: grid; gap: 1rem; align-content: start; }
+/*
+ * Scrolling grids size their rows to the content (max-content). With the default
+ * the grid may squash a child that clips its own overflow (a table, a <pre>) to
+ * fit the screen, and whatever follows is drawn over it.
+ */
+.catalog { padding: 1rem; overflow-y: auto; display: grid; grid-auto-rows: max-content; gap: 1rem; align-content: start; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0.7rem; }
 .product { position: relative; display: grid; gap: 0.2rem; min-height: 5.75rem; padding: 0.8rem 0.9rem; text-align: left; align-content: start; border-radius: var(--radius); box-shadow: var(--shadow); }
 .product.current { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 0 0 2px var(--brand); }
@@ -160,7 +165,7 @@ pre { margin: 0.5rem 0 0; padding: 0.7rem; background: #fff; border: 1px dashed 
 .pay label.check.on { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-strong); font-weight: 600; }
 
 .split { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 26rem; }
-.split > section { padding: 1rem; overflow-y: auto; display: grid; gap: 0.75rem; align-content: start; }
+.split > section { padding: 1rem; overflow-y: auto; display: grid; grid-auto-rows: max-content; gap: 0.75rem; align-content: start; }
 .split > .detail { background: var(--surface); border-left: 1px solid var(--line); }
 .split .card { box-shadow: none; width: 100%; }
 table { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
