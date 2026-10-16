@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Toggle, ToggleGroup } from 'bits-ui';
   import { type CartItem, type PaymentInput, computeTotals, discountCentsFor, formatCents } from '@mpf/shared';
   import type { LocalOrder, LocalProduct } from '../lib/repo.ts';
   import { app, printTicket, sell, setSoldOut } from '../lib/state.svelte.ts';
@@ -38,6 +39,17 @@
 
   const inCart = (id: string) => cart.find((i) => i.productId === id)?.quantity ?? 0;
   const left = (p: LocalProduct) => (p.available === null ? null : p.available - inCart(p.id));
+
+  // A toggle group cannot hold an empty value, so "Todos" has a key of its own.
+  const ALL = '*';
+  const setCategory = (value: string) => {
+    if (value) category = value === ALL ? '' : value;
+  };
+  const setMarking = (on: boolean) => {
+    marking = on;
+    category = '';
+    notice = null;
+  };
 
   let toggling = $state(false);
   async function toggleSoldOut(p: LocalProduct) {
@@ -169,15 +181,17 @@
   <section class="catalog">
     <div class="row">
       <input bind:value={search} placeholder="Buscar…" />
-      <button class:active={category === ''} onclick={() => (category = '')}>Todos</button>
-      {#each categories as c (c)}
-        <button class:active={category === c} onclick={() => (category = c)}>{c}</button>
-      {/each}
+      <ToggleGroup.Root type="single" class="row" aria-label="Categoría" bind:value={() => category || ALL, setCategory}>
+        <ToggleGroup.Item value={ALL}>Todos</ToggleGroup.Item>
+        {#each categories as c (c)}
+          <ToggleGroup.Item value={c}>{c}</ToggleGroup.Item>
+        {/each}
+      </ToggleGroup.Root>
       <span class="spacer"></span>
       {#if madeOnDemand || marking}
-        <button class:active={marking} onclick={() => { marking = !marking; category = ''; notice = null; }}>
+        <Toggle.Root bind:pressed={() => marking, setMarking}>
           {marking ? 'Listo' : 'Marcar agotados'}
-        </button>
+        </Toggle.Root>
       {/if}
     </div>
     {#if marking}
