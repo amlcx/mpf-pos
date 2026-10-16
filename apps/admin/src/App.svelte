@@ -41,7 +41,7 @@
       {/each}
     </nav>
     <span class="spacer"></span>
-    <span>{panel.user.name}</span>
+    <span class="who">{panel.user.name}</span>
     <button onclick={() => signOut()}>Salir</button>
   </header>
   <main>

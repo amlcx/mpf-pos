@@ -7,3 +7,38 @@ header select { width: auto; border-color: transparent; background: rgb(255 255 
 dl { display: grid; grid-template-columns: 1fr auto; gap: 0.3rem 1rem; margin: 0; }
 dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 dt.total, dt.total + dd { font-weight: 700; border-top: 1px solid var(--line); padding-top: 0.3rem; }
+
+/*
+ * Phones and portrait tablets. The panel is used from any browser, the
+ * register never is, so all of this lives here and not in the shared theme.
+ */
+.back { display: none; }
+@media (max-width: 900px) {
+  header { flex-wrap: wrap; row-gap: 0.4rem; padding: 0.5rem 0.75rem; }
+  header nav { order: 1; flex: 1 0 100%; margin: 0; overflow-x: auto; scrollbar-width: none; }
+  header nav button { white-space: nowrap; }
+
+  /* One column, scrolled as a whole instead of two independent panes. */
+  .split { display: block; overflow-y: auto; }
+  .split > section { overflow: visible; }
+  .split > .detail { border-left: none; border-top: 1px solid var(--line); }
+  /* An open record (order, product, user) becomes a full-screen sheet, so it
+     is not left below a long list where nobody would see it. */
+  .split > .detail.open { position: fixed; inset: 0; z-index: 10; overflow-y: auto; border: none; }
+  .split > .detail.open .back { display: block; justify-self: start; }
+}
+
+@media (max-width: 600px) {
+  header .logo { display: none; }
+  header strong { font-size: 1.1rem; }
+  /* Below 16px, iOS zooms the page into any field that gets focus. */
+  input, select { font-size: 1rem; }
+  .split > section { padding: 0.75rem; }
+  th, td { padding: 0.5rem 0.55rem; }
+  td.nowrap { white-space: nowrap; }
+  header .who { display: none; }
+  .optional { display: none; }
+  td.actions { flex-wrap: wrap; }
+  .filters > input { flex: 1 1 8rem; }
+  .filters > button.primary { flex: 1 0 100%; }
+}

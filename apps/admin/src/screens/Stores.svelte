@@ -124,15 +124,15 @@
       </div>
       <table>
         <thead>
-          <tr><th>Código</th><th>Nombre</th><th>Última conexión</th><th></th><th></th></tr>
+          <tr><th>Código</th><th>Nombre</th><th class="optional">Última conexión</th><th class="optional"></th><th></th></tr>
         </thead>
         <tbody>
           {#each terminals as t (t.id)}
             <tr class:voided={!t.active}>
               <td>{t.code}</td>
               <td>{t.name}</td>
-              <td>{seen(t.lastSeenAt)}</td>
-              <td>{t.active ? '' : 'Desactivada'}</td>
+              <td class="optional">{seen(t.lastSeenAt)}</td>
+              <td class="optional">{t.active ? '' : 'Desactivada'}</td>
               <td class="actions">
                 <button onclick={() => rotate(t)}>{rotating === t.id ? '¿Seguro? Desconecta la caja' : 'Nuevo token'}</button>
                 <button onclick={() => toggle(t)}>{t.active ? 'Desactivar' : 'Activar'}</button>

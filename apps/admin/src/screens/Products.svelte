@@ -99,7 +99,7 @@
     <table>
       <thead>
         <tr>
-          <th>Nombre</th><th>Categoría</th><th class="num">Precio</th>
+          <th>Nombre</th><th class="optional">Categoría</th><th class="num">Precio</th>
           <th class="num">Existencias en {store?.name}</th><th></th>
         </tr>
       </thead>
@@ -107,7 +107,7 @@
         {#each visible as p (p.id)}
           <tr class:voided={!p.active} class:selected={draft?.id === p.id} onclick={() => open(p)}>
             <td>{p.name}</td>
-            <td>{p.category}</td>
+            <td class="optional">{p.category}</td>
             <td class="num">{money(p.priceCents)}</td>
             <td class="num">
               {#if !p.trackStock}—{:else if (p.stockQty ?? 0) < 0}<span class="pill bad">{p.stockQty}</span>{:else}{p.stockQty}{/if}
@@ -123,7 +123,8 @@
     </table>
   </section>
 
-  <section class="detail">
+  <section class="detail" class:open={draft !== null}>
+    <button class="back" onclick={() => (draft = null)}>‹ Volver</button>
     {#if message}<p class="muted">{message}</p>{/if}
     {#if error}<p class="error">{error}</p>{/if}
     {#if draft}

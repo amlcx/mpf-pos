@@ -70,13 +70,13 @@
     </div>
     <table>
       <thead>
-        <tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Tienda</th><th></th></tr>
+        <tr><th>Usuario</th><th class="optional">Nombre</th><th>Rol</th><th>Tienda</th><th></th></tr>
       </thead>
       <tbody>
         {#each users as u (u.id)}
           <tr class:voided={!u.active} class:selected={draft?.id === u.id} onclick={() => open(u)}>
             <td>{u.username}</td>
-            <td>{u.name}</td>
+            <td class="optional">{u.name}</td>
             <td>{u.role === 'admin' ? 'Administrador' : 'Cajero'}</td>
             <td>{storeName(u.storeId)}</td>
             <td>{u.active ? '' : 'Inactivo'}</td>
@@ -86,7 +86,8 @@
     </table>
   </section>
 
-  <section class="detail">
+  <section class="detail" class:open={draft !== null}>
+    <button class="back" onclick={() => (draft = null)}>‹ Volver</button>
     {#if message}<p class="muted">{message}</p>{/if}
     {#if draft}
       <form class="card" onsubmit={save}>

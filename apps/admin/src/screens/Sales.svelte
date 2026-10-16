@@ -172,14 +172,14 @@
     <h3>Pedidos de {store?.name}</h3>
     <table>
       <thead>
-        <tr><th>Tiquete</th><th>Hora</th><th>Cajero</th><th class="num">Total</th><th>Estado</th></tr>
+        <tr><th>Tiquete</th><th>Hora</th><th class="optional">Cajero</th><th class="num">Total</th><th>Estado</th></tr>
       </thead>
       <tbody>
         {#each orders.slice(0, MAX_ROWS) as o (o.id)}
           <tr class:selected={selected?.id === o.id} class:voided={o.status === 'voided'} onclick={() => { selected = o; message = ''; }}>
-            <td>{o.ticketNumber}</td>
+            <td class="nowrap">{o.ticketNumber}</td>
             <td>{when(o.createdAt)}</td>
-            <td>{o.cashierName ?? ''}</td>
+            <td class="optional">{o.cashierName ?? ''}</td>
             <td class="num">{money(o.totalCents)}</td>
             <td>
               {#if o.status === 'voided'}<span class="pill bad">Anulado</span>{/if}
@@ -198,7 +198,9 @@
     {/if}
   </section>
 
-  <section class="detail">
+  <!-- On a narrow screen an open order or void covers the list; see panel.css. -->
+  <section class="detail" class:open={selected !== null || voiding !== null}>
+    <button class="back" onclick={() => (voiding ? (voiding = null) : (selected = null))}>‹ Volver</button>
     {#if message}<p class="muted">{message}</p>{/if}
     {#if voiding}
       <form class="card" onsubmit={confirmVoid}>
