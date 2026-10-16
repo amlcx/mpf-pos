@@ -17,7 +17,8 @@ drops and reconcile afterwards.
 | `crates/pos-native` | Local SQLite file and raw printer output. No Tauri dependency. | Rust, rusqlite |
 
 Stack choices are settled: Svelte (not React), Valibot (not Zod), Postgres,
-pnpm. Do not introduce an ORM, a second validation library or a UI framework.
+pnpm, Bits UI for interactive components (dialogs, toggles, pagination…).
+Do not introduce an ORM, a second validation library or another UI library.
 
 ## Commands
 
@@ -160,7 +161,11 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
 - Svelte 5 runes only (`$state`, `$derived`, `$props`); no stores, no
   `export let`. Screens call functions from `state.svelte.ts`; they do not
   touch the database or the API client themselves.
-- No `window.prompt/alert/confirm`: they are unreliable in webviews.
+- No `window.prompt/alert/confirm`: they are unreliable in webviews. Ask
+  with a Bits UI `AlertDialog` instead.
+- Bits UI is headless: style its parts with classes from `theme.css`, which
+  also styles its states (`data-state="on"`, `data-selected`) like `.active`.
+  The register is moving to it screen by screen; follow `Orders.svelte`.
 - Rust stays thin. Logic that can be TypeScript is TypeScript; anything in
   Rust that is not a Tauri command goes in `pos-native` with a test.
 - Reports: `summarize`, `ordersCsv` and `ordersXlsx` in

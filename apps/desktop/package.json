@@ -13,6 +13,7 @@
     "@mpf/brand": "workspace:*",
     "@mpf/shared": "workspace:*",
     "@tauri-apps/api": "^2.12.1",
+    "bits-ui": "^2.19.5",
     "valibot": "^1.5.0"
   },
   "devDependencies": {

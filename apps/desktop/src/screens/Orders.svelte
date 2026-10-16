@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { AlertDialog, Pagination, ToggleGroup } from 'bits-ui';
   import {
     type DateRange,
     type ReportOrder,
@@ -27,8 +28,8 @@
 
   /** register: this PC's own orders, available offline. store: every register, from the server. */
   type Scope = 'register' | 'store';
-  // Long ranges can hold thousands of orders; the summary and CSV always cover all of them.
-  const MAX_ROWS = 300;
+  // Long ranges can hold thousands of orders; the table shows them a page at a time.
+  const PAGE_SIZE = 50;
 
   const quick = presets();
   const QUICK_LABEL: [keyof typeof quick, string][] = [
@@ -45,6 +46,7 @@
   let conflicts = $state<StockConflict[]>([]);
   let selected = $state<ReportOrder | null>(null);
   let message = $state('');
+  let page = $state(1);
 
   const symbol = $derived(app.context?.store.currencySymbol ?? '');
   const money = (cents: number) => formatCents(cents, symbol);
@@ -54,6 +56,18 @@
   // Only this register's own orders carry sync information.
   const local = (o: ReportOrder) => ('syncStatus' in o ? (o as LocalOrder) : null);
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const shown = $derived(orders.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE));
+
+  // The quick buttons light up while the dates match one of them. Pressing the lit
+  // one again would leave none pressed, so an empty value changes nothing.
+  const quickKey = () =>
+    QUICK_LABEL.find(([key]) => range.from === quick[key].from && range.to === quick[key].to)?.[0] ?? '';
+  const setQuick = (key: string) => {
+    if (key) range = { ...quick[key as keyof typeof quick] };
+  };
+  const setScope = (value: string) => {
+    if (value) scope = value as Scope;
+  };
 
   let request = 0;
   async function reload() {
@@ -78,6 +92,7 @@
   $effect(() => {
     // Re-run whenever the filter changes.
     void [range.from, range.to, scope];
+    page = 1;
     void reload();
   });
 
@@ -99,6 +114,8 @@
   // The order being voided, while the cashier types the reason.
   let voiding = $state<{ orderId: string; ticketNumber: string } | null>(null);
   let voidReason = $state('');
+  let voidBusy = $state(false);
+  let reasonInput = $state<HTMLInputElement | null>(null);
 
   function askVoid(orderId: string, ticketNumber: string) {
     voiding = { orderId, ticketNumber };
@@ -107,8 +124,10 @@
 
   async function confirmVoid(event: SubmitEvent) {
     event.preventDefault();
-    if (!voiding) return;
+    if (!voiding || voidBusy) return;
+    voidBusy = true;
     message = (await voidOrder(voiding.orderId, voidReason)) ?? `Pedido ${voiding.ticketNumber} anulado.`;
+    voidBusy = false;
     voiding = null;
     await reload();
   }
@@ -125,21 +144,20 @@
 <div class="split">
   <section>
     <div class="row filters">
-      {#each QUICK_LABEL as [key, label] (key)}
-        <button
-          class:active={range.from === quick[key].from && range.to === quick[key].to}
-          onclick={() => (range = { ...quick[key] })}
-        >
-          {label}
-        </button>
-      {/each}
+      <ToggleGroup.Root type="single" class="row" aria-label="Fechas" bind:value={quickKey, setQuick}>
+        {#each QUICK_LABEL as [key, label] (key)}
+          <ToggleGroup.Item value={key}>{label}</ToggleGroup.Item>
+        {/each}
+      </ToggleGroup.Root>
       <input type="date" bind:value={range.from} max={range.to} aria-label="Desde" />
       <span class="muted">a</span>
       <input type="date" bind:value={range.to} min={range.from} aria-label="Hasta" />
       <span class="spacer"></span>
       {#if canAdmin()}
-        <button class:active={scope === 'register'} onclick={() => (scope = 'register')}>Esta caja</button>
-        <button class:active={scope === 'store'} onclick={() => (scope = 'store')}>Toda la tienda</button>
+        <ToggleGroup.Root type="single" class="row" aria-label="Pedidos de" bind:value={() => scope, setScope}>
+          <ToggleGroup.Item value="register">Esta caja</ToggleGroup.Item>
+          <ToggleGroup.Item value="store">Toda la tienda</ToggleGroup.Item>
+        </ToggleGroup.Root>
       {/if}
       <button class="primary" disabled={orders.length === 0} onclick={exportCsv}>Exportar CSV</button>
     </div>
@@ -207,7 +225,7 @@
         <tr><th>Tiquete</th><th>Hora</th><th>Cajero</th><th class="num">Total</th><th>Estado</th></tr>
       </thead>
       <tbody>
-        {#each orders.slice(0, MAX_ROWS) as o (o.id)}
+        {#each shown as o (o.id)}
           {@const mine = local(o)}
           <tr class:selected={selected?.id === o.id} class:voided={o.status === 'voided'} onclick={() => { selected = o; message = ''; }}>
             <td>{o.ticketNumber}</td>
@@ -230,27 +248,26 @@
         {/each}
       </tbody>
     </table>
-    {#if orders.length > MAX_ROWS}
-      <p class="muted">
-        Se muestran los {MAX_ROWS} más recientes de {orders.length}. El resumen y el CSV los incluyen todos.
-      </p>
+    {#if orders.length > PAGE_SIZE}
+      <Pagination.Root count={orders.length} perPage={PAGE_SIZE} bind:page class="row pages">
+        {#snippet children({ pages, range })}
+          <Pagination.PrevButton aria-label="Página anterior">‹</Pagination.PrevButton>
+          {#each pages as item (item.key)}
+            {#if item.type === 'ellipsis'}
+              <span class="muted">…</span>
+            {:else}
+              <Pagination.Page page={item}>{item.value}</Pagination.Page>
+            {/if}
+          {/each}
+          <Pagination.NextButton aria-label="Página siguiente">›</Pagination.NextButton>
+          <span class="muted">{range.start}–{range.end} de {orders.length}</span>
+        {/snippet}
+      </Pagination.Root>
     {/if}
   </section>
 
   <section class="detail">
     {#if message}<p class="muted">{message}</p>{/if}
-    {#if voiding}
-      <form class="card" onsubmit={confirmVoid}>
-        <h3>Anular pedido {voiding.ticketNumber}</h3>
-        <p class="muted">Sus productos vuelven a las existencias. No se puede deshacer.</p>
-        <!-- svelte-ignore a11y_autofocus -->
-        <label>Motivo <input bind:value={voidReason} required maxlength="300" autofocus /></label>
-        <div class="row">
-          <button type="button" onclick={() => (voiding = null)}>Cancelar</button>
-          <button class="primary" disabled={!voidReason.trim()}>Anular pedido</button>
-        </div>
-      </form>
-    {/if}
     {#if selected}
       <pre>{preview}</pre>
       {#if selected.voidReason}
@@ -279,3 +296,29 @@
     {/if}
   </section>
 </div>
+
+<AlertDialog.Root bind:open={() => voiding !== null, (open) => { if (!open && !voidBusy) voiding = null; }}>
+  <AlertDialog.Portal>
+    <AlertDialog.Overlay class="overlay" />
+    <AlertDialog.Content
+      class="card modal"
+      onOpenAutoFocus={(e) => { e.preventDefault(); reasonInput?.focus(); }}
+    >
+      <form onsubmit={confirmVoid}>
+        <AlertDialog.Title>
+          {#snippet child({ props })}<h3 {...props}>Anular pedido {voiding?.ticketNumber}</h3>{/snippet}
+        </AlertDialog.Title>
+        <AlertDialog.Description class="muted">
+          Sus productos vuelven a las existencias. No se puede deshacer.
+        </AlertDialog.Description>
+        <label>Motivo <input bind:this={reasonInput} bind:value={voidReason} required maxlength="300" /></label>
+        <div class="row">
+          <AlertDialog.Cancel type="button" disabled={voidBusy}>Cancelar</AlertDialog.Cancel>
+          <AlertDialog.Action type="submit" class="primary" disabled={!voidReason.trim() || voidBusy}>
+            Anular pedido
+          </AlertDialog.Action>
+        </div>
+      </form>
+    </AlertDialog.Content>
+  </AlertDialog.Portal>
+</AlertDialog.Root>

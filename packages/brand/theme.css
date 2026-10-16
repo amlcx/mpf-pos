@@ -47,7 +47,8 @@ button {
 button:hover:not(:disabled) { border-color: var(--brand); }
 button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
-button.active { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-strong); font-weight: 600; }
+/* Bits UI marks pressed toggles with data-state and the current page with data-selected. */
+button.active, button[data-state='on'], button[data-selected] { background: var(--brand-soft); border-color: var(--brand); color: var(--brand-strong); font-weight: 600; }
 button.primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); font-weight: 700; }
 button.primary:hover:not(:disabled) { background: #f283ad; }
 :focus-visible { outline: 3px solid rgb(238 111 160 / 0.55); outline-offset: 2px; }
@@ -140,7 +141,10 @@ pre { margin: 0.5rem 0 0; padding: 0.7rem; background: #fff; border: 1px dashed 
 .top li strong { font-variant-numeric: tabular-nums; }
 
 .overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgb(61 15 36 / 0.45); }
-.overlay .row > button { flex: 1; padding: 0.8rem; }
+.overlay .row > button, .modal .row > button { flex: 1; padding: 0.8rem; }
+.modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+.modal form { display: grid; gap: 0.8rem; }
+.pages button { min-width: 2.6rem; }
 .pay { display: grid; grid-template-columns: 17rem 1fr; width: min(52rem, calc(100vw - 2rem)); min-height: min(30rem, calc(100vh - 2rem)); padding: 0; overflow: hidden; gap: 0; font-size: 1.05rem; }
 .pay .due { display: grid; gap: 0.55rem; align-content: start; padding: 1.75rem 1.5rem; background: var(--brand-soft); border-right: 1px solid var(--line); }
 .pay .due p { display: flex; justify-content: space-between; gap: 0.75rem; font-variant-numeric: tabular-nums; }
