@@ -6,6 +6,13 @@ const EnvSchema = v.object({
   PORT: v.pipe(v.optional(v.string(), '8787'), v.transform(Number), v.integer()),
   /** Release this server was built from (the image's APP_VERSION). */
   APP_VERSION: v.optional(v.pipe(v.string(), v.minLength(1)), 'dev'),
+  /**
+   * SHA-256 (hex) of the token the release workflows send to /releases.
+   * Unset: nobody can publish or promote a release.
+   */
+  RELEASE_DEPLOY_TOKEN_SHA256: v.optional(
+    v.pipe(v.string(), v.trim(), v.regex(/^[0-9a-fA-F]{64}$/), v.toLowerCase()),
+  ),
 });
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {

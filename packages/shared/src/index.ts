@@ -4,3 +4,4 @@ export * from './order.ts';
 export * from './password.ts';
 export * from './report.ts';
 export * from './uuid.ts';
+export * from './version.ts';

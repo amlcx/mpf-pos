@@ -96,7 +96,8 @@ export async function call<T = any>(
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  return { status: res.status, json: (await res.json()) as T };
+  const text = await res.text(); // empty on 204
+  return { status: res.status, json: (text ? JSON.parse(text) : null) as T };
 }
 
 export async function stockOf(world: World, product: keyof World['products']): Promise<number> {

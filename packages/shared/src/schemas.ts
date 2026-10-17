@@ -1,9 +1,12 @@
 import * as v from 'valibot';
+import { VERSION_PATTERN } from './version.ts';
 
 export const PAYMENT_METHODS = ['cash', 'digital'] as const;
 export const ROLES = ['admin', 'cashier'] as const;
 export const STOCK_POLICIES = ['strict', 'accept'] as const;
 export const DISCOUNT_KINDS = ['loyalty_card'] as const;
+/** A new version reaches 'pilot' registers first, then 'stable' ones. */
+export const RELEASE_RINGS = ['pilot', 'stable'] as const;
 
 const Id = v.pipe(v.string(), v.uuid());
 const Cents = v.pipe(v.number(), v.safeInteger(), v.minValue(0));
@@ -200,8 +203,11 @@ export const TerminalInputSchema = v.object({
   name: Name,
 });
 export type TerminalInput = v.InferOutput<typeof TerminalInputSchema>;
-export const TerminalPatchSchema = v.partial(v.object({ name: Name, active: v.boolean() }));
+export const TerminalPatchSchema = v.partial(
+  v.object({ name: Name, active: v.boolean(), releaseRing: v.picklist(RELEASE_RINGS) }),
+);
 export type TerminalPatch = v.InferOutput<typeof TerminalPatchSchema>;
+export type ReleaseRing = (typeof RELEASE_RINGS)[number];
 export interface ManagedTerminal {
   id: string;
   storeId: string;
@@ -209,6 +215,9 @@ export interface ManagedTerminal {
   name: string;
   active: boolean;
   lastSeenAt: string | null;
+  /** What the register last said it runs (X-App-Version); null until it does. */
+  appVersion: string | null;
+  releaseRing: ReleaseRing;
 }
 
 export const UserInputSchema = v.object({
@@ -281,4 +290,41 @@ export interface StockConflict {
   productName: string;
   shortfall: number;
   createdAt: string;
+}
+
+// --------------------------------------------------------------- releases
+// Sent by scripts/offer-release.mjs from the release workflows; the shapes
+// must stay in step with that script.
+
+export const VersionSchema = v.pipe(v.string(), v.regex(VERSION_PATTERN));
+
+/** Registers install only what this repository published as a release. */
+export const RELEASE_URL_PREFIX = 'https://github.com/amlcx/mpf-pos/releases/download/';
+
+export const ReleaseOfferSchema = v.object({
+  version: VersionSchema,
+  ring: v.picklist(RELEASE_RINGS),
+  notes: v.optional(v.pipe(v.string(), v.maxLength(10_000)), ''),
+  pubDate: v.optional(v.nullable(Timestamp), null),
+  /** The installer on the GitHub Release for this version's tag. */
+  url: v.pipe(v.string(), v.maxLength(500), v.startsWith(RELEASE_URL_PREFIX)),
+  /** minisign signature of that file, checked by the register before installing. */
+  signature: v.pipe(v.string(), v.minLength(1), v.maxLength(2000)),
+});
+export type ReleaseOffer = v.InferOutput<typeof ReleaseOfferSchema>;
+
+/** Only one move exists: what the pilot ring runs becomes stable. */
+export const ReleasePromoteSchema = v.object({
+  version: VersionSchema,
+  from: v.literal('pilot'),
+  to: v.literal('stable'),
+});
+
+/** Answer to a register's update check, in the format Tauri's updater reads. */
+export interface UpdateManifest {
+  version: string;
+  notes: string;
+  pub_date?: string;
+  url: string;
+  signature: string;
 }

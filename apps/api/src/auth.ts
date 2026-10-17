@@ -1,5 +1,5 @@
-import { createHash, randomBytes } from 'node:crypto';
-import type { Role } from '@mpf/shared';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import type { ReleaseRing, Role } from '@mpf/shared';
 
 /**
  * Two credentials:
@@ -14,6 +14,9 @@ export interface TerminalCtx {
   storeId: string;
   code: string;
   name: string;
+  /** Which release this register is offered. */
+  releaseRing: ReleaseRing;
+  appVersion: string | null;
 }
 export interface SessionCtx {
   userId: string;
@@ -27,4 +30,11 @@ export function newTerminalToken(): string {
 }
 export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
+}
+
+/** Whether `token` hashes to `expectedSha256` (hex), compared in constant time. */
+export function tokenMatchesHash(token: string, expectedSha256: string): boolean {
+  const actual = Buffer.from(hashToken(token), 'hex');
+  const expected = Buffer.from(expectedSha256, 'hex');
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }

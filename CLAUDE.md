@@ -143,6 +143,25 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
 - Offline login checks the password against the hash cached by the last pull.
   It allows selling only: no voids, sold-out marks or admin actions.
 
+### Releases
+- A tag `vX.Y.Z` builds one release: the API image and the register
+  installer. Rollout is server first, then the `pilot` ring, then `stable`
+  (`docs/DEPLOY.md`, section 6). Each terminal is in one ring
+  (`terminals.release_ring`), set from the panel.
+- `/releases` (`apps/api/src/releases.ts`) is a third front door, used only by
+  the release workflows through `scripts/offer-release.mjs`. Its token is
+  checked against `RELEASE_DEPLOY_TOKEN_SHA256` in constant time; only the
+  hash is configured. It touches no store data. A test runs the real script
+  against the API, so the two cannot drift apart.
+- An offered installer URL must already be in normal form and sit under
+  `RELEASE_URL_PREFIX` and that version's tag. Promoting copies `pilot` to
+  `stable` and is refused unless `pilot` is on exactly that version.
+- `/updates/...` offers a register its ring's release only when it is a higher
+  X.Y.Z than what it runs: registers never downgrade, so a bad release is
+  fixed by releasing the next patch version.
+- Registers send `X-App-Version`; the terminal middleware stores it only when
+  it changed.
+
 ## Conventions
 
 - Validation schemas live in `packages/shared/src/schemas.ts` and are the API

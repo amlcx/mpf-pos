@@ -2,12 +2,14 @@ import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import {
   OrderSchema,
+  VERSION_PATTERN,
   buildOrder,
   changeDueCents,
   computeTotals,
   discountCentsFor,
   formatCents,
   hashPassword,
+  isNewerVersion,
   orderProblems,
   parseCents,
   uuidv7,
@@ -143,5 +145,18 @@ describe('passwords and ids', () => {
     const b = uuidv7(2_000);
     expect(a < b).toBe(true);
     expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+});
+
+describe('versions', () => {
+  it('compares X.Y.Z as numbers', () => {
+    expect(isNewerVersion('1.2.0', '1.1.9')).toBe(true);
+    expect(isNewerVersion('1.10.0', '1.9.0')).toBe(true);
+    expect(isNewerVersion('2.0.0', '1.99.99')).toBe(true);
+    expect(isNewerVersion('1.2.0', '1.2.0')).toBe(false);
+    expect(isNewerVersion('1.9.0', '1.10.0')).toBe(false);
+    expect(VERSION_PATTERN.test('1.2.3')).toBe(true);
+    expect(VERSION_PATTERN.test('1.2')).toBe(false);
+    expect(VERSION_PATTERN.test('v1.2.3')).toBe(false);
   });
 });

@@ -16,6 +16,7 @@ const app = createApp({
   sql,
   sessionSecret: config.SESSION_SECRET,
   version: config.APP_VERSION,
+  releaseTokenSha256: config.RELEASE_DEPLOY_TOKEN_SHA256,
   panelDir: existsSync(panelDir) ? panelDir : undefined,
 });
 const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {

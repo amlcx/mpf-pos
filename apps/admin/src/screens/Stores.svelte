@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ManagedTerminal } from '@mpf/shared';
+  import type { ManagedTerminal, ReleaseRing } from '@mpf/shared';
   import { api, attempt, errorText } from '../lib/api.ts';
   import { currentStore, isOrgAdmin, panel, reloadStores } from '../lib/state.svelte.ts';
 
@@ -95,6 +95,11 @@
     await loadTerminals(t.storeId);
   }
 
+  async function setRing(t: ManagedTerminal, releaseRing: ReleaseRing) {
+    error = (await attempt(() => api.patchTerminal(t.storeId, t.id, { releaseRing }))) ?? '';
+    await loadTerminals(t.storeId);
+  }
+
   // Asked for twice on purpose: replacing a token disconnects that register.
   let rotating = $state<string | null>(null);
   async function rotate(t: ManagedTerminal) {
@@ -124,13 +129,27 @@
       </div>
       <table>
         <thead>
-          <tr><th>Código</th><th>Nombre</th><th class="optional">Última conexión</th><th class="optional"></th><th></th></tr>
+          <tr>
+            <th>Código</th><th>Nombre</th><th class="optional">Versión</th><th>Actualizaciones</th>
+            <th class="optional">Última conexión</th><th class="optional"></th><th></th>
+          </tr>
         </thead>
         <tbody>
           {#each terminals as t (t.id)}
             <tr class:voided={!t.active}>
               <td>{t.code}</td>
               <td>{t.name}</td>
+              <td class="optional">{t.appVersion ?? '—'}</td>
+              <td>
+                <select
+                  value={t.releaseRing}
+                  aria-label={`Actualizaciones de ${t.name}`}
+                  onchange={(e) => setRing(t, e.currentTarget.value as ReleaseRing)}
+                >
+                  <option value="pilot">Piloto</option>
+                  <option value="stable">Estable</option>
+                </select>
+              </td>
               <td class="optional">{seen(t.lastSeenAt)}</td>
               <td class="optional">{t.active ? '' : 'Desactivada'}</td>
               <td class="actions">
@@ -139,7 +158,7 @@
               </td>
             </tr>
           {:else}
-            <tr><td colspan="5" class="muted">Esta tienda aún no tiene cajas.</td></tr>
+            <tr><td colspan="7" class="muted">Esta tienda aún no tiene cajas.</td></tr>
           {/each}
         </tbody>
       </table>
@@ -164,6 +183,10 @@
         <button class="primary" disabled={busy}>Agregar caja</button>
       </form>
       <p class="muted">El código es el prefijo de los tiquetes de esa caja (A-0001, A-0002…).</p>
+      <p class="muted">
+        Las cajas <strong>piloto</strong> reciben cada versión nueva primero; las <strong>estables</strong>, cuando
+        se confirma que funciona bien en las piloto.
+      </p>
     {:else}
       <p class="muted">Crea la primera tienda en el formulario de la derecha.</p>
     {/if}
