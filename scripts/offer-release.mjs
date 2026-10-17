@@ -33,14 +33,15 @@ if (command === 'offer') {
   // The repository is public, so registers download straight from the
   // release. The API only accepts URLs under this repo's releases.
   const prefix = 'https://github.com/amlcx/mpf-pos/releases/download/';
-  if (!windows.url.startsWith(prefix)) fail(`Unexpected download URL: ${windows.url}`);
+  const url = await downloadUrl(windows.url);
+  if (!url.startsWith(prefix)) fail(`Unexpected download URL: ${url}`);
 
   await post('/releases', {
     version: values.version,
     ring: values.ring,
     notes: manifest.notes ?? '',
     pubDate: manifest.pub_date,
-    url: windows.url,
+    url,
     signature: windows.signature,
   });
   console.log(`Offered ${values.version} to the ${values.ring} ring`);
@@ -49,6 +50,25 @@ if (command === 'offer') {
   console.log(`Promoted ${values.version} from pilot to stable`);
 } else {
   fail('First argument must be "offer" or "promote"');
+}
+
+/**
+ * tauri-action writes the API address of the asset
+ * (https://api.github.com/repos/amlcx/mpf-pos/releases/assets/<id>), which
+ * only serves the file with a special Accept header. Registers get the
+ * asset's ordinary download link instead, as GitHub reports it.
+ */
+async function downloadUrl(url) {
+  const asset = /^https:\/\/api\.github\.com\/repos\/amlcx\/mpf-pos\/releases\/assets\/(\d+)$/.exec(url);
+  if (!asset) return url;
+  const api = process.env.GITHUB_API_URL ?? 'https://api.github.com';
+  const headers = { accept: 'application/vnd.github+json' };
+  if (process.env.GH_TOKEN) headers.authorization = `Bearer ${process.env.GH_TOKEN}`;
+  const res = await fetch(`${api}/repos/amlcx/mpf-pos/releases/assets/${asset[1]}`, { headers });
+  if (!res.ok) fail(`Could not look up release asset ${asset[1]}: ${res.status}`);
+  const { browser_download_url: link } = await res.json();
+  if (typeof link !== 'string') fail(`Release asset ${asset[1]} has no download URL`);
+  return link;
 }
 
 async function post(path, body) {
