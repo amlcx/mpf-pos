@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { BUSINESS_NAME } from '@mpf/brand';
   import logo from '@mpf/brand/logo.webp';
-  import { app, boot, signOut, syncNow } from './lib/state.svelte.ts';
+  import { app, boot, installUpdate, signOut, syncNow } from './lib/state.svelte.ts';
   import Login from './screens/Login.svelte';
   import Orders from './screens/Orders.svelte';
   import Pos from './screens/Pos.svelte';
@@ -18,6 +18,10 @@
     ...(isAdmin ? ([['products', 'Productos'], ['settings', 'Ajustes']] as [Tab, string][]) : []),
   ]);
   const waiting = $derived(app.counts.pending + app.counts.submitting);
+  let updateError = $state('');
+  async function install() {
+    updateError = (await installUpdate()) ?? '';
+  }
 
   onMount(boot);
 </script>
@@ -53,6 +57,17 @@
     <span>{app.session.user.name}</span>
     <button onclick={() => { signOut(); tab = 'sell'; }}>Salir</button>
   </header>
+  {#if app.update.status === 'ready'}
+    <div class="banner good" role="status">
+      <strong>Actualización lista</strong>
+      <span>Versión {app.update.version}. Se instala en menos de un minuto y la caja se abre de nuevo.</span>
+      <button class="primary" disabled={app.saleOpen} onclick={install}>Instalar ahora</button>
+      {#if app.saleOpen}<span class="hand">Termina la venta en curso para instalarla.</span>{/if}
+      {#if updateError}<span class="error">{updateError}</span>{/if}
+    </div>
+  {:else if app.update.status === 'installing'}
+    <p class="banner good" role="status">Instalando la versión {app.update.version}… la caja se abre de nuevo sola.</p>
+  {/if}
   {#if app.syncError}
     <p class="banner error">{app.syncError}</p>
   {:else if !app.online}

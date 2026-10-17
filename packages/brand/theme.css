@@ -108,6 +108,7 @@ main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .banner { padding: 0.5rem 1rem; font-size: 0.9rem; }
 .banner.warn { background: var(--accent-soft); border-bottom: 2px solid var(--accent); }
 .banner.error { background: var(--destructive-soft); border-bottom: 2px solid var(--destructive); color: var(--bad); }
+.banner.good { background: var(--good-soft); border-bottom: 2px solid var(--good); display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
 
 .pill { padding: 0.15rem 0.65rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; border: 1px solid currentColor; background: var(--surface); white-space: nowrap; }
 header .pill, header button.pill:hover:not(:disabled) { background: var(--surface); border-color: transparent; }

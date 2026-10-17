@@ -1,37 +1,45 @@
 // Real terminals' logic against the real API and Postgres; only the network
 // in between is simulated, so it can be cut.
 import { type World, call, createWorld, stockOf } from '@mpf/api/testing';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ApiClient } from '../src/lib/api.ts';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { ApiClient, type FetchLike } from '../src/lib/api.ts';
 import { login } from '../src/lib/auth.ts';
-import { checkout } from '../src/lib/checkout.ts';
+import { checkout, checkoutInProgress } from '../src/lib/checkout.ts';
 import { type LocalDb, migrateLocal } from '../src/lib/local-db.ts';
 import { countBySyncStatus, getOrder, listProducts, loadContext } from '../src/lib/repo.ts';
 import { type SyncDeps, syncOnce } from '../src/lib/sync.ts';
+import { type Updater, Updates } from '../src/lib/updates.ts';
 import { createNodeDb } from './node-db.ts';
 
 let w: World;
 
+const APP_VERSION = '0.1.0';
+
 interface Terminal extends SyncDeps {
-  net: { up: boolean; dropResponses: boolean };
+  /** hold: while set, requests wait for it before reaching the server. */
+  net: { up: boolean; dropResponses: boolean; hold: Promise<void> | null };
+  fetch: FetchLike;
   sell(items: Partial<Record<keyof World['products'], number>>, online?: boolean): ReturnType<typeof checkout>;
   available(product: keyof World['products']): Promise<number | null>;
 }
 
 async function terminal(code: 'A' | 'B', db: LocalDb = createNodeDb()): Promise<Terminal> {
-  const net = { up: true, dropResponses: false };
-  const api = new ApiClient('http://api.test', w.terminals[code].token, async (url, init) => {
+  const net: Terminal['net'] = { up: true, dropResponses: false, hold: null };
+  const fetch: FetchLike = async (url, init) => {
     if (!net.up) throw new TypeError('fetch failed');
+    if (net.hold) await net.hold;
     const res = await w.app.request(url, init);
     if (net.dropResponses) throw new TypeError('connection reset');
     return res;
-  });
+  };
+  const api = new ApiClient('http://api.test', w.terminals[code].token, fetch, APP_VERSION);
   await migrateLocal(db);
   const deps = { db, api };
   await syncOnce(deps);
   return {
     ...deps,
     net,
+    fetch,
     async sell(items, online = net.up) {
       const products = await listProducts(db);
       const cart = Object.entries(items).map(([name, quantity]) => {
@@ -58,6 +66,39 @@ async function terminal(code: 'A' | 'B', db: LocalDb = createNodeDb()): Promise<
 async function setStock(product: 'flan' | 'brownie', quantity: number) {
   const session = (await call(w.app, w.terminals.A.token, 'POST', '/auth/login', { username: 'admin', password: 'admin123' })).json.token;
   await call(w.app, w.terminals.A.token, 'PUT', `/admin/products/${w.products[product]}/stock`, { quantity }, session);
+}
+
+/**
+ * Updates for a terminal, with Tauri's updater replaced by one that asks the
+ * real /updates route through the terminal's network, the way the plugin
+ * does. Installing only records the version.
+ */
+function updatesFor(t: Terminal, updater?: Updater) {
+  const installed: string[] = [];
+  const viaServer: Updater = {
+    async check(endpoint, terminalToken) {
+      const url = endpoint
+        .replace('{{target}}', 'windows')
+        .replace('{{arch}}', 'x86_64')
+        .replace('{{current_version}}', APP_VERSION);
+      const res = await t.fetch(url, { headers: { Authorization: `Bearer ${terminalToken}` } });
+      if (res.status === 204) return null;
+      if (!res.ok) throw new Error(`update check answered ${res.status}`);
+      const manifest = (await res.json()) as { version: string; notes: string };
+      return {
+        version: manifest.version,
+        notes: manifest.notes,
+        download: async () => {},
+        install: async () => void installed.push(manifest.version),
+      };
+    },
+  };
+  const updates = new Updates({
+    updater: updater ?? viaServer,
+    server: () => ({ apiUrl: 'http://api.test', terminalToken: w.terminals.A.token }),
+    busy: checkoutInProgress,
+  });
+  return { updates, installed };
 }
 
 beforeAll(async () => {
@@ -219,6 +260,53 @@ describe('terminals against the server', () => {
     expect(a.api.sessionToken).toBeNull();
     a.net.up = true;
     expect(await login(a, 'cashier', 'wrong')).toBeNull();
+  });
+
+  it('tells the server which version it runs', async () => {
+    const [row] = await w.sql<{ appVersion: string }[]>`select app_version from terminals where id = ${w.terminals.A.id}`;
+    expect(row!.appVersion).toBe(APP_VERSION);
+  });
+
+  it('an update check while offline never blocks a sale', async () => {
+    a.net.up = false;
+    const { updates } = updatesFor(a);
+    const checking = updates.check();
+    expect(await a.sell({ coffee: 1 })).toMatchObject({ ok: true, synced: false });
+    await expect(checking).resolves.toBeUndefined();
+    expect(updates.state).toEqual({ status: 'idle' });
+
+    // Nor does a check that never answers: it holds nothing a sale needs.
+    const stuck = updatesFor(a, { check: () => new Promise(() => {}) }).updates;
+    void stuck.check();
+    expect(await a.sell({ coffee: 1 })).toMatchObject({ ok: true, synced: false });
+    a.net.up = true;
+    await syncOnce(a);
+    expect(await countBySyncStatus(a.db)).toMatchObject({ pending: 0, submitting: 0 });
+  });
+
+  it('install is refused while a checkout is in progress', async () => {
+    await w.sql`
+      insert into register_releases (ring, version, url, signature)
+      values ('stable', '0.2.0', 'https://github.com/amlcx/mpf-pos/releases/download/v0.2.0/setup.exe', 'sig')`;
+    const { updates, installed } = updatesFor(a);
+    await updates.check();
+    expect(updates.state).toMatchObject({ status: 'ready', version: '0.2.0' });
+
+    // The server is slow to confirm this sale: the checkout stays open.
+    let answer!: () => void;
+    a.net.hold = new Promise((resolve) => (answer = resolve));
+    const sale = a.sell({ coffee: 1 });
+    await vi.waitFor(() => expect(checkoutInProgress()).toBe(true));
+    expect(await updates.install()).toBe('busy');
+    expect(installed).toEqual([]);
+
+    a.net.hold = null;
+    answer();
+    expect(await sale).toMatchObject({ ok: true, synced: true });
+    expect(checkoutInProgress()).toBe(false);
+    expect(await updates.install()).toBe('installing');
+    expect(installed).toEqual(['0.2.0']);
+    await w.sql`delete from register_releases`;
   });
 
   it('a reinstalled terminal continues its ticket numbers', async () => {
