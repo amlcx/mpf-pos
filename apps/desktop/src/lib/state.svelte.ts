@@ -12,7 +12,7 @@ import {
 } from '@mpf/shared';
 import { ApiClient, ApiError, NetworkError } from './api.ts';
 import { type Session, login } from './auth.ts';
-import { type CheckoutResult, checkout } from './checkout.ts';
+import { type CheckoutResult, checkout, checkoutInProgress } from './checkout.ts';
 import { migrateLocal } from './local-db.ts';
 import {
   type Context,
@@ -27,10 +27,12 @@ import {
   saveConfig,
 } from './repo.ts';
 import { retryFailed, syncOnce } from './sync.ts';
-import { printRaw, saveExport, tauriDb as db } from './tauri.ts';
+import { appVersion, printRaw, saveExport, tauriDb as db, tauriUpdater } from './tauri.ts';
 import { escpos, ticketRows, ticketText } from './ticket.ts';
+import { type UpdateState, Updates } from './updates.ts';
 
 const SYNC_INTERVAL_MS = 5000;
+const UPDATE_INTERVAL_MS = 60 * 60 * 1000;
 
 /** Everything the screens render. Screens call the functions below to change it. */
 export const app = $state({
@@ -43,9 +45,15 @@ export const app = $state({
   syncError: '',
   products: [] as LocalProduct[],
   counts: { submitting: 0, pending: 0, synced: 0, failed: 0 },
+  /** A cart has items or the payment dialog is open (set by the sale screen). */
+  saleOpen: false,
+  update: { status: 'idle' } as UpdateState,
 });
 
 let api: ApiClient | null = null;
+/** This build's version, sent to the server on every request. */
+let version: string | null = null;
+const client = (config: TerminalConfig) => new ApiClient(config.apiUrl, config.terminalToken, undefined, version);
 const deps = () => {
   if (!api) throw new Error('terminal is not set up');
   return { db, api };
@@ -100,8 +108,9 @@ export async function syncNow(): Promise<void> {
 export async function boot(): Promise<void> {
   try {
     await migrateLocal(db);
+    version = await appVersion().catch(() => null);
     app.config = await loadConfig(db);
-    if (app.config) api = new ApiClient(app.config.apiUrl, app.config.terminalToken);
+    if (app.config) api = client(app.config);
     await refresh();
   } catch (err) {
     app.bootError = String(err);
@@ -109,6 +118,8 @@ export async function boot(): Promise<void> {
   app.ready = true;
   void syncNow();
   setInterval(() => void syncNow(), SYNC_INTERVAL_MS);
+  void updates.check();
+  setInterval(() => void updates.check(), UPDATE_INTERVAL_MS);
 }
 
 /** Saves this PC's settings. A new server or token is verified first. */
@@ -119,7 +130,7 @@ export async function saveSetup(config: TerminalConfig): Promise<string | null> 
     if (app.counts.pending + app.counts.submitting + app.counts.failed > 0) {
       return 'Hay pedidos que aún no llegan al servidor. Sincronízalos antes de cambiar el servidor o el token.';
     }
-    const candidate = new ApiClient(config.apiUrl, config.terminalToken);
+    const candidate = client(config);
     const error = await attempt(async () => applyPull(db, await candidate.pull()));
     if (error) return error;
     api = candidate;
@@ -263,4 +274,32 @@ export const resolveConflict = (id: string) =>
 export async function retryFailedOrders(): Promise<void> {
   await retryFailed(db);
   await syncNow();
+}
+
+// ------------------------------------------------------------------ updates
+
+const updates = new Updates({
+  updater: tauriUpdater,
+  server: () => app.config,
+  busy: () => app.saleOpen || checkoutInProgress(),
+  onChange(state) {
+    app.update = state;
+    // Downloaded before anyone logged in, typically right after opening the
+    // app: nobody can be selling, so install straight away.
+    if (state.status === 'ready' && !app.session) void installUpdate();
+  },
+});
+
+export function setSaleOpen(open: boolean): void {
+  app.saleOpen = open;
+}
+
+/** Installs a downloaded update; returns a message when it cannot. The app restarts. */
+export async function installUpdate(): Promise<string | null> {
+  try {
+    const result = await updates.install();
+    return result === 'busy' ? 'Termina la venta en curso antes de actualizar.' : null;
+  } catch (err) {
+    return `No se pudo instalar la actualización: ${errorText(err)}`;
+  }
 }
