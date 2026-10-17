@@ -15,15 +15,15 @@ admins (any browser) ───┘
 The server runs on **Dokploy**, built from the `Dockerfile` at the root of this
 repository. `caja.example.com` stands for the domain you will give it.
 
-## 1. Put the code on GitLab
+## 1. The code on GitHub
 
-Create a **private** project on GitLab (no README, so it starts empty), then
-from this repository:
+The code lives at <https://github.com/amlcx/mpf-pos> (public). To work on it:
 
 ```sh
-git remote add origin git@gitlab.com:<your-user>/mpf.git
-git push -u origin main
+git clone git@github.com:amlcx/mpf-pos.git
 ```
+
+Changes reach `main` through pull requests.
 
 ## 2. Deploy the server on Dokploy
 
@@ -33,11 +33,11 @@ Menu names below may differ slightly between Dokploy versions.
 
 1. In Dokploy, open (or create) a project and add a service of type
    **Application**.
-2. **Provider**: choose GitLab and pick this repository and the `main` branch.
-   If your GitLab account is not connected yet, connect it under Dokploy's
-   Git settings first. (Alternative: the plain "Git" provider with a GitLab
-   deploy token: **Settings → Repository → Deploy tokens**, scope
-   `read_repository`.)
+2. **Provider**: choose GitHub and pick `amlcx/mpf-pos` and the `main`
+   branch. If your GitHub account is not connected yet, connect it under
+   Dokploy's Git settings first (it installs a GitHub App). Since the
+   repository is public, the plain "Git" provider with
+   `https://github.com/amlcx/mpf-pos.git` also works, with no credentials.
 3. **Build type**: Dockerfile. Dockerfile path `Dockerfile`, build context `.`
    (the repository root).
 
@@ -135,8 +135,8 @@ One-time setup on that PC:
 Then, in a terminal:
 
 ```sh
-git clone https://gitlab.com/<your-user>/mpf.git
-cd mpf
+git clone https://github.com/amlcx/mpf-pos.git
+cd mpf-pos
 pnpm install --frozen-lockfile
 pnpm --filter @mpf/desktop tauri build
 ```
@@ -197,8 +197,8 @@ cleanly below the last line, and the drawer opens.
 
 ## 6. Updating
 
-**Server** (new panel features, fixes, database changes): push to `main` on
-GitLab and press **Deploy** in Dokploy (or turn on automatic deploys there).
+**Server** (new panel features, fixes, database changes): merge into `main`
+on GitHub and press **Deploy** in Dokploy (or turn on automatic deploys there).
 Database changes are applied automatically when the new container starts.
 Registers keep selling during the switch and sync when it is back.
 
