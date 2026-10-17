@@ -27,12 +27,17 @@ export interface CheckoutInput {
 
 // One sale at a time: ticket numbers are read, then written.
 let queue: Promise<unknown> = Promise.resolve();
+let inFlight = 0;
 
 export function checkout(deps: SyncDeps, input: CheckoutInput): Promise<CheckoutResult> {
-  const run = queue.then(() => checkoutNow(deps, input));
+  inFlight++;
+  const run = queue.then(() => checkoutNow(deps, input)).finally(() => inFlight--);
   queue = run.catch(() => {});
   return run;
 }
+
+/** True while a sale is being saved or sent; updates must not install then. */
+export const checkoutInProgress = () => inFlight > 0;
 
 async function checkoutNow(deps: SyncDeps, input: CheckoutInput): Promise<CheckoutResult> {
   const { db } = deps;

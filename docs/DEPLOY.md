@@ -149,8 +149,13 @@ Then, in a terminal:
 git clone https://github.com/amlcx/mpf-pos.git
 cd mpf-pos
 pnpm install --frozen-lockfile
-pnpm --filter @mpf/desktop tauri build
+pnpm --filter @mpf/desktop tauri build --config "{\"bundle\":{\"createUpdaterArtifacts\":false}}"
 ```
+
+Releases are normally built by GitHub Actions (section 6), which also signs
+the update. A build by hand like this one skips the updater signature (it
+would need the private key, which stays in GitHub secrets); it installs fine,
+and registers running it still update themselves to later releases.
 
 The first build takes several minutes. The installer appears in
 `target\release\bundle\nsis\` as `Mi Postre Favorito_<version>_x64-setup.exe`.
@@ -267,12 +272,26 @@ printf %s '<the token>' | sha256sum           # the hash: RELEASE_DEPLOY_TOKEN_S
 
 To replace it, change both and redeploy.
 
-### Registers installed by hand
+### How a register updates itself
 
-Registers do not install updates by themselves yet. Until they do, update
-each one by hand: build the installer (step 4) or download it from the
-GitHub Release, and run it over the existing installation. Orders, settings
-and the token are kept.
+- It asks its server when it opens and every hour after. Offline it simply
+  asks again later; selling is never affected.
+- A newer version for its ring is downloaded in the background, then the
+  header shows **Actualización lista** with an **Instalar ahora** button.
+- It installs only when no sale is open: the button waits while a cart has
+  items, the payment dialog is open or a sale is being saved. If the update
+  is ready before anyone has logged in (typically right after opening the
+  app), it installs straight away.
+- Installing shows a small progress window, then the app opens again. Orders,
+  settings and the token are kept.
+- The installer comes from the GitHub Release; the register refuses it unless
+  it is signed with the updater key whose public half is built into the app.
+  The terminal token is only ever sent to our server.
+- Updates need the server address to be `https://`.
+
+Registers installed before self-updating existed (0.1.0) cannot update
+themselves: install the first self-updating release on each PC by hand,
+from the GitHub Release, over the existing installation.
 
 ## 7. Backups
 

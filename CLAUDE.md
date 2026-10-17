@@ -161,6 +161,14 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
   fixed by releasing the next patch version.
 - Registers send `X-App-Version`; the terminal middleware stores it only when
   it changed.
+- Install updates only outside a checkout. On Windows installing closes the
+  app, so `Updates.install` (`apps/desktop/src/lib/updates.ts`) refuses while
+  a sale is open (cart or payment, `app.saleOpen`) or being saved
+  (`checkoutInProgress`). Before anyone logs in it installs at once. Checking
+  and downloading never throw and never hold anything a sale needs.
+- The terminal token goes only to our server. Installers come from GitHub and
+  are checked against the updater public key in `tauri.conf.json`; the
+  private key lives only in GitHub secrets and offline.
 
 ## Conventions
 
@@ -187,6 +195,11 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
   The register is moving to it screen by screen; follow `Orders.svelte`.
 - Rust stays thin. Logic that can be TypeScript is TypeScript; anything in
   Rust that is not a Tauri command goes in `pos-native` with a test.
+  `check_update` is the one command that is not a plain wrapper: the update
+  endpoint is the server chosen in Setup, and the updater plugin's JS
+  `check()` cannot take an endpoint, only Rust can. It also clears the
+  request headers on the update it finds, so the download from GitHub never
+  carries the terminal token. Download and install stay the plugin's.
 - Reports: `summarize`, `ordersCsv` and `ordersXlsx` in
   `packages/shared/src/report.ts` are the only place sales figures are
   computed, for the register, the panel and the exports alike (CSV from the
@@ -221,4 +234,5 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
 - Export of sales to the ERP.
 - Stock movement history and transfers between stores in the panel.
 - Live push of stock changes (registers poll every 5 s).
-- Single-instance guard, installer signing, auto-update.
+- Single-instance guard, Windows code signing of the installer (updates are
+  signed with the updater key; the installer itself is not).

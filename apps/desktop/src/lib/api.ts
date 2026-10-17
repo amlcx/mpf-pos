@@ -39,17 +39,26 @@ export class ApiClient {
   #baseUrl: string;
   #terminalToken: string;
   #fetch: FetchLike;
+  #appVersion: string | null;
 
-  constructor(baseUrl: string, terminalToken: string, fetchImpl: FetchLike = (u, i) => fetch(u, i)) {
+  /** appVersion is sent as X-App-Version, so the panel shows what each register runs. */
+  constructor(
+    baseUrl: string,
+    terminalToken: string,
+    fetchImpl: FetchLike = (u, i) => fetch(u, i),
+    appVersion: string | null = null,
+  ) {
     this.#baseUrl = baseUrl.replace(/\/+$/, '');
     this.#terminalToken = terminalToken;
     this.#fetch = fetchImpl;
+    this.#appVersion = appVersion;
   }
 
   async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const headers: Record<string, string> = { Authorization: `Bearer ${this.#terminalToken}` };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     if (this.sessionToken) headers['X-Session'] = this.sessionToken;
+    if (this.#appVersion) headers['X-App-Version'] = this.#appVersion;
     let res: Response;
     try {
       res = await this.#fetch(this.#baseUrl + path, {

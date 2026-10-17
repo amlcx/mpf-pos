@@ -2,7 +2,7 @@
   import { Toggle, ToggleGroup } from 'bits-ui';
   import { type CartItem, type PaymentInput, computeTotals, discountCentsFor, formatCents } from '@mpf/shared';
   import type { LocalOrder, LocalProduct } from '../lib/repo.ts';
-  import { app, printTicket, sell, setSoldOut } from '../lib/state.svelte.ts';
+  import { app, printTicket, sell, setSaleOpen, setSoldOut } from '../lib/state.svelte.ts';
   import Payment from './Payment.svelte';
 
   let cart = $state<CartItem[]>([]);
@@ -15,6 +15,13 @@
   let done = $state<{ order: LocalOrder; synced: boolean; status: string; failed: boolean } | null>(null);
   // The product the + and - keys act on: the last one clicked or adjusted.
   let activeId = $state<string | null>(null);
+
+  // A sale is open from the first item until it is paid or emptied; an
+  // update waits for it. Leaving this screen drops the cart.
+  $effect(() => {
+    setSaleOpen(cart.length > 0 || paying || busy);
+    return () => setSaleOpen(false);
+  });
 
   const store = $derived(app.context!.store);
   const symbol = $derived(store.currencySymbol);
