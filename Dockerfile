@@ -32,6 +32,10 @@ COPY --from=panel /app/apps/admin/dist apps/admin/dist
 USER node
 WORKDIR /app/apps/api
 ENV PORT=8787
+# Set by release.yml from the git tag; /health reports it. Last, so a new
+# version does not invalidate the layers above.
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://localhost:' + process.env.PORT + '/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"

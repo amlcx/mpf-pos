@@ -1,0 +1,58 @@
+# Checks every change: types, all TS tests against real Postgres, and the
+# pos-native Rust tests (run by `pnpm test`). Also called by release.yml so a
+# tag is never built from a commit whose checks fail.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      # Postgres 13 on purpose: migrations must keep running on 13+ (no
+      # built-in uuidv7()). Same port and credentials as `pnpm db:up`, so
+      # .env.example and the tests' default database URL work unchanged.
+      postgres:
+        image: postgres:13
+        env:
+          POSTGRES_USER: mpf
+          POSTGRES_PASSWORD: mpf
+          POSTGRES_DB: mpf
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U mpf"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads the pnpm version from "packageManager" in the root package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: cp .env.example apps/api/.env
+
+      - run: pnpm typecheck
+
+      - run: pnpm test

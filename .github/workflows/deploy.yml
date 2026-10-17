@@ -1,0 +1,74 @@
+# Manual step 1 of a rollout. Server first, always: the API must accept what
+# every installed register sends before any register is offered the update.
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy, without the v (e.g. 1.4.0)'
+        required: true
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write # retag the image
+    env:
+      VERSION: ${{ inputs.version }}
+      IMAGE: ghcr.io/amlcx/mpf-pos-api
+      API_BASE_URL: ${{ vars.API_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release view "v$VERSION" > /dev/null
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Dokploy runs ghcr.io/amlcx/mpf-pos-api:stable; moving that tag is the
+      # deploy. The versioned tag stays, so rolling back is retagging.
+      - name: Point the stable tag at this version
+        run: docker buildx imagetools create -t "$IMAGE:stable" "$IMAGE:$VERSION"
+
+      - name: Ask Dokploy to redeploy
+        run: curl -fsS -X POST "${{ secrets.DOKPLOY_DEPLOY_WEBHOOK }}"
+
+      - name: Wait until the server reports this version
+        run: |
+          for i in $(seq 1 60); do
+            current=$(curl -fsS "$API_BASE_URL/health" | jq -r '.version // empty' || true)
+            if [ "$current" = "$VERSION" ]; then
+              echo "Server is on $VERSION"
+              exit 0
+            fi
+            echo "Server reports '${current:-nothing}', waiting..."
+            sleep 10
+          done
+          echo "Server never reported $VERSION" >&2
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Offer the release to the pilot ring
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_DEPLOY_TOKEN: ${{ secrets.RELEASE_DEPLOY_TOKEN }}
+        run: |
+          mkdir -p release
+          gh release download "v$VERSION" --pattern latest.json --dir release
+          node scripts/offer-release.mjs offer --version "$VERSION" --ring pilot --manifest release/latest.json

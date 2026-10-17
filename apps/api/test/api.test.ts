@@ -1,5 +1,6 @@
 import { type PullResponse, buildOrder } from '@mpf/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createApp } from '../src/app.ts';
 import { createStore, createTerminal } from '../src/fixtures.ts';
 import { type World, call, createWorld, makeOrder, stockOf } from './helpers.ts';
 
@@ -21,6 +22,12 @@ const setStock = (product: 'flan' | 'brownie', quantity: number) =>
   call(w.app, tokenA(), 'PUT', `/admin/products/${w.products[product]}/stock`, { quantity }, adminSession);
 
 describe('auth and sync', () => {
+  it('reports its version on /health, without a terminal', async () => {
+    expect((await call(w.app, null, 'GET', '/health')).json).toEqual({ ok: true, version: 'dev' });
+    const released = createApp({ sql: w.sql, sessionSecret: 'test-secret-test-secret', version: '1.4.0' });
+    expect((await call(released, null, 'GET', '/health')).json).toEqual({ ok: true, version: '1.4.0' });
+  });
+
   it('rejects unknown terminals and bad logins', async () => {
     expect((await call(w.app, null, 'GET', '/sync/pull')).status).toBe(401);
     expect((await call(w.app, 'mpf_nope', 'GET', '/sync/pull')).status).toBe(401);

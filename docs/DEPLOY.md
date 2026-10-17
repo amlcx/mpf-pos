@@ -79,7 +79,8 @@ Press **Deploy**. The first build takes a few minutes. In the logs you should
 see `Applied migrations: 001_init.sql` and `mpf api listening`. Then, from
 your own computer:
 
-- `https://caja.example.com/health` answers `{"ok":true}`
+- `https://caja.example.com/health` answers `{"ok":true,"version":"…"}`: the release
+  the image was built from, or `dev` for a plain build
 - `https://caja.example.com/panel/` shows the login
 
 Keep it at **one replica**. The login lockout is kept in memory, so several

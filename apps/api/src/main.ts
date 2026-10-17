@@ -15,10 +15,11 @@ const panelDir = fileURLToPath(new URL('../../admin/dist', import.meta.url));
 const app = createApp({
   sql,
   sessionSecret: config.SESSION_SECRET,
+  version: config.APP_VERSION,
   panelDir: existsSync(panelDir) ? panelDir : undefined,
 });
 const server = serve({ fetch: app.fetch, port: config.PORT }, (info) => {
-  console.log(`mpf api listening on http://localhost:${info.port}`);
+  console.log(`mpf api ${config.APP_VERSION} listening on http://localhost:${info.port}`);
 });
 
 // In a container this process is PID 1, where signals do nothing unless
