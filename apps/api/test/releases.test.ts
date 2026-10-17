@@ -164,13 +164,39 @@ describe('releases', () => {
         }),
       );
       const script = fileURLToPath(new URL('../../../scripts/offer-release.mjs', import.meta.url));
-      const env = { ...process.env, API_BASE_URL: `http://127.0.0.1:${port}`, RELEASE_DEPLOY_TOKEN: DEPLOY_TOKEN };
+      const env: NodeJS.ProcessEnv = { ...process.env, GH_TOKEN: '', API_BASE_URL: `http://127.0.0.1:${port}`, RELEASE_DEPLOY_TOKEN: DEPLOY_TOKEN };
       const run = (...args: string[]) => promisify(execFile)(process.execPath, [script, ...args], { env });
 
       await run('offer', '--version', '1.3.0', '--ring', 'pilot', '--manifest', manifest);
       expect((await check(tokenA(), '1.2.0')).json).toMatchObject({ version: '1.3.0', notes: 'Arreglos' });
       await run('promote', '--version', '1.3.0');
       expect((await check(tokenB(), '1.2.0')).json).toMatchObject({ version: '1.3.0', signature: 'sig-1.3.0' });
+
+      // What tauri-action really writes: the asset's API address. The script
+      // swaps it for the asset's download link, asked of (here, a stand-in
+      // for) GitHub's API.
+      const github = serve({
+        fetch: (req) =>
+          new URL(req.url).pathname === '/repos/amlcx/mpf-pos/releases/assets/42'
+            ? Response.json({ browser_download_url: download('1.4.0') })
+            : new Response(null, { status: 404 }),
+        port: 0,
+        hostname: '127.0.0.1',
+      });
+      await new Promise((resolve) => github.once('listening', resolve));
+      try {
+        env.GITHUB_API_URL = `http://127.0.0.1:${(github.address() as AddressInfo).port}`;
+        const platform = { signature: 'sig-1.4.0', url: 'https://api.github.com/repos/amlcx/mpf-pos/releases/assets/42' };
+        await writeFile(manifest, JSON.stringify({ version: '1.4.0', notes: '', platforms: { 'windows-x86_64': platform } }));
+        await run('offer', '--version', '1.4.0', '--ring', 'pilot', '--manifest', manifest);
+        expect((await check(tokenA(), '1.3.0')).json).toMatchObject({ version: '1.4.0', url: download('1.4.0') });
+
+        platform.url = 'https://api.github.com/repos/amlcx/mpf-pos/releases/assets/7';
+        await writeFile(manifest, JSON.stringify({ version: '1.4.0', notes: '', platforms: { 'windows-x86_64': platform } }));
+        await expect(run('offer', '--version', '1.4.0', '--ring', 'pilot', '--manifest', manifest)).rejects.toThrow();
+      } finally {
+        await new Promise((resolve) => github.close(resolve));
+      }
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }
