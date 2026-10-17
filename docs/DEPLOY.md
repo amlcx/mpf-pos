@@ -44,6 +44,11 @@ Menu names below may differ slightly between Dokploy versions.
 No Compose file is needed: the server is a single container and the database
 already exists.
 
+Building from `main` is how the server starts. Once the first release exists
+(section 6), switch the application's provider to **Docker**, image
+`ghcr.io/amlcx/mpf-pos-api:stable` (see `CI-SETUP.md`), so that a deploy runs
+exactly the released version and `/health` reports it.
+
 ### Environment
 
 In the application's **Environment** tab:
@@ -51,6 +56,7 @@ In the application's **Environment** tab:
 ```sh
 DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/DATABASE
 SESSION_SECRET=<output of: openssl rand -hex 32>
+RELEASE_DEPLOY_TOKEN_SHA256=<SHA-256 of the release token, see section 6>
 ```
 
 - The database must be Postgres 13 or newer, and `USER` must be allowed to
@@ -60,6 +66,10 @@ SESSION_SECRET=<output of: openssl rand -hex 32>
 - If the database requires TLS, add `?sslmode=require` to the URL.
 - `SESSION_SECRET` signs logins. Changing it later logs everyone out.
 - The container listens on port `8787` (set `PORT` only to change that).
+- `RELEASE_DEPLOY_TOKEN_SHA256` lets the release workflows tell the server
+  which register version to offer. Without it, nobody can publish a release;
+  everything else works.
+- `APP_VERSION` is set inside images built by a release; do not set it here.
 
 ### Domain and HTTPS
 
@@ -198,17 +208,71 @@ cleanly below the last line, and the drawer opens.
 
 ## 6. Updating
 
-**Server** (new panel features, fixes, database changes): merge into `main`
-on GitHub and press **Deploy** in Dokploy (or turn on automatic deploys there).
+Everything ships as a **release**: a git tag `vX.Y.Z` builds the server image
+and the register installer from the same commit. The one-time GitHub and
+Dokploy setup (secrets, signing key, image) is in `CI-SETUP.md`.
+
+### Release rings
+
+Each register is in a ring, chosen in the panel under **Tienda y cajas**
+(column "Actualizaciones"):
+
+- **Piloto**: gets each new version first. Pick one register in one store.
+- **Estable** (the default): gets it once it has been promoted.
+
+The server keeps one offered release per ring. A register asks
+`/updates/...` with its own version and is answered with the ring's release
+only when that is newer; the installer itself is downloaded from the GitHub
+Release, and the register checks its signature before installing. The panel
+shows the version each register last reported.
+
+### Releasing a version
+
+1. Merge into `main` what the release should contain (CI must pass).
+2. `git tag vX.Y.Z && git push origin vX.Y.Z`. The **release** workflow runs
+   the checks again, pushes `ghcr.io/amlcx/mpf-pos-api:X.Y.Z` and creates the
+   GitHub Release with the signed installer and `latest.json`. Nothing is
+   deployed yet.
+3. GitHub → Actions → **deploy** → Run workflow → `X.Y.Z`. It moves the image
+   tag `stable` to this version, asks Dokploy to redeploy, waits until
+   `/health` reports `X.Y.Z`, then offers the release to the **pilot** ring.
+   The server always goes first: it must accept what every installed register
+   sends.
+4. After a day of normal sales on the pilot register: Actions → **promote** →
+   `X.Y.Z`. It refuses unless the pilot ring is on exactly that version.
+
 Database changes are applied automatically when the new container starts.
 Registers keep selling during the switch and sync when it is back.
 
-**Registers**: raise `version` in `apps/desktop/src-tauri/tauri.conf.json`,
-build the installer again (step 4) and run it on each PC over the existing
-installation. Orders, settings and the token are kept. There is no automatic
-update.
+### Rolling back
 
-Update the server first when a release changes both.
+Registers never install an older version, so a bad register release is fixed
+forward: revert on `main`, tag the next patch version (`vX.Y.Z+1`) and release
+it as above. If the pilot found the problem, never promote the bad version.
+
+The server alone can go back by running **deploy** with the previous version
+(its image is still in GHCR), but only if the database migrations in between
+work with the older code. Migrations only ever add, so check that the older
+server does not break on the new columns or tables before doing this.
+
+### The release token
+
+The workflows authenticate to `/releases` with `RELEASE_DEPLOY_TOKEN` (a
+GitHub secret); the server keeps only its SHA-256:
+
+```sh
+openssl rand -hex 32                          # the token: GitHub secret
+printf %s '<the token>' | sha256sum           # the hash: RELEASE_DEPLOY_TOKEN_SHA256
+```
+
+To replace it, change both and redeploy.
+
+### Registers installed by hand
+
+Registers do not install updates by themselves yet. Until they do, update
+each one by hand: build the installer (step 4) or download it from the
+GitHub Release, and run it over the existing installation. Orders, settings
+and the token are kept.
 
 ## 7. Backups
 

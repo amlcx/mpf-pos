@@ -11,8 +11,12 @@ import {
   SoldOutSchema,
   StockSetSchema,
   SubmitOrderRequestSchema,
+  type UpdateManifest,
   type User,
+  VERSION_PATTERN,
+  VersionSchema,
   VoidOrderSchema,
+  isNewerVersion,
   orderProblems,
   verifyPassword,
 } from '@mpf/shared';
@@ -26,6 +30,7 @@ import type { Sql } from './db.ts';
 import { body, fail, idParam, parse } from './http.ts';
 import { createManageRoutes } from './manage.ts';
 import { submitOrder, voidOrder } from './orders.ts';
+import { createReleaseRoutes } from './releases.ts';
 import {
   changeStock,
   getProduct,
@@ -45,6 +50,8 @@ export interface AppDeps {
   sessionSecret: string;
   /** Release this server runs, reported by /health so deploys can wait for it. */
   version?: string;
+  /** SHA-256 of the release workflows' token; without it /releases refuses everyone. */
+  releaseTokenSha256?: string;
   /** Folder with the built admin panel (apps/admin/dist), served at /panel/. */
   panelDir?: string;
 }
@@ -53,7 +60,7 @@ export function createApp(deps: AppDeps) {
   const { sql, sessionSecret } = deps;
   const app = new Hono<Env>();
 
-  app.use(cors({ origin: '*', allowHeaders: ['Authorization', 'Content-Type', 'X-Session'] }));
+  app.use(cors({ origin: '*', allowHeaders: ['Authorization', 'Content-Type', 'X-Session', 'X-App-Version'] }));
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
@@ -73,6 +80,7 @@ export function createApp(deps: AppDeps) {
   // The web admin panel and its API authenticate people, not terminals, so
   // they are mounted before the terminal check.
   app.route('/manage', createManageRoutes(deps));
+  app.route('/releases', createReleaseRoutes(deps));
   if (deps.panelDir) {
     const root = relative(process.cwd(), deps.panelDir) || '.';
     app.get('/', (c) => c.redirect('/panel/'));
@@ -85,11 +93,41 @@ export function createApp(deps: AppDeps) {
     const token = /^Bearer (.+)$/.exec(c.req.header('Authorization') ?? '')?.[1];
     if (!token) fail(401, 'terminal_token_required');
     const [terminal] = await sql<TerminalCtx[]>`
-      select id, store_id, code, name from terminals
+      select id, store_id, code, name, release_ring, app_version from terminals
       where token_hash = ${hashToken(token)} and active`;
     if (!terminal) fail(401, 'terminal_token_invalid');
+    // Registers say which version they run on every request. Written only
+    // when it changes, so the usual request costs no extra write.
+    const appVersion = c.req.header('X-App-Version');
+    if (appVersion && VERSION_PATTERN.test(appVersion) && appVersion !== terminal.appVersion) {
+      await sql`update terminals set app_version = ${appVersion} where id = ${terminal.id}`;
+      terminal.appVersion = appVersion;
+    }
     c.set('terminal', terminal);
     await next();
+  });
+
+  /**
+   * Tauri's updater asks here (endpoint .../updates/{{target}}/{{arch}}/{{current_version}}).
+   * 204 means "stay as you are". Only Windows installers are published, and
+   * the register downloads the file from the GitHub Release itself.
+   */
+  app.get('/updates/:target/:arch/:currentVersion', async (c) => {
+    const { target, arch, currentVersion } = c.req.param();
+    const current = parse(VersionSchema, currentVersion);
+    if (target !== 'windows' || arch !== 'x86_64') return c.body(null, 204);
+    const [release] = await sql<{ version: string; url: string; signature: string; notes: string; pubDate: Date | null }[]>`
+      select version, url, signature, notes, pub_date from register_releases
+      where ring = ${c.var.terminal.releaseRing}`;
+    if (!release || !isNewerVersion(release.version, current)) return c.body(null, 204);
+    const { version, url, signature, notes, pubDate } = release;
+    return c.json({
+      version,
+      notes,
+      url,
+      signature,
+      ...(pubDate ? { pub_date: pubDate.toISOString() } : {}),
+    } satisfies UpdateManifest);
   });
 
   /** A person logged in online at this terminal's store; with `role`, only that role. */

@@ -30,14 +30,17 @@ if (command === 'offer') {
   const windows = manifest.platforms?.['windows-x86_64'];
   if (!windows?.signature || !windows?.url) fail('latest.json has no windows-x86_64 entry');
 
+  // The repository is public, so registers download straight from the
+  // release. The API only accepts URLs under this repo's releases.
+  const prefix = 'https://github.com/amlcx/mpf-pos/releases/download/';
+  if (!windows.url.startsWith(prefix)) fail(`Unexpected download URL: ${windows.url}`);
+
   await post('/releases', {
     version: values.version,
     ring: values.ring,
     notes: manifest.notes ?? '',
     pubDate: manifest.pub_date,
-    // The API downloads this asset from the GitHub release on the
-    // registers' behalf; registers never see a GitHub URL or token.
-    assetName: decodeURIComponent(new URL(windows.url).pathname.split('/').pop()),
+    url: windows.url,
     signature: windows.signature,
   });
   console.log(`Offered ${values.version} to the ${values.ring} ring`);

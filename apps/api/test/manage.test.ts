@@ -103,6 +103,23 @@ describe('stores and registers', () => {
     // A register cannot be reached through another store's URL.
     expect((await manage(org, 'PATCH', `/stores/${northId}/terminals/${terminal.id}`, { active: true })).status).toBe(404);
   });
+
+  it('puts a register in a release ring and shows the version it runs', async () => {
+    const path = `/stores/${w.storeId}/terminals/${w.terminals.A.id}`;
+    await w.app.request('/sync/pull', { headers: { Authorization: `Bearer ${w.terminals.A.token}`, 'X-App-Version': '1.4.0' } });
+    const before = (await manage(local, 'GET', `/stores/${w.storeId}/terminals`)).json.terminals;
+    expect(before.find((t: { id: string }) => t.id === w.terminals.A.id)).toMatchObject({
+      appVersion: '1.4.0',
+      releaseRing: 'stable',
+    });
+
+    const moved = await manage(local, 'PATCH', path, { releaseRing: 'pilot' });
+    expect(moved.json.terminal).toMatchObject({ releaseRing: 'pilot', appVersion: '1.4.0' });
+    expect((await manage(local, 'PATCH', path, { releaseRing: 'beta' })).status).toBe(400);
+    // Through storeParam like every store route: a store admin cannot reach another store.
+    expect((await manage(local, 'PATCH', `/stores/${northId}/terminals/${w.terminals.A.id}`, { releaseRing: 'stable' })).status).toBe(403);
+    await manage(local, 'PATCH', path, { releaseRing: 'stable' });
+  });
 });
 
 describe('users', () => {

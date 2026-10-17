@@ -46,10 +46,35 @@ The public key goes in `apps/desktop/src-tauri/tauri.conf.json`
 | Name | Value |
 |---|---|
 | `RELEASE_DEPLOY_TOKEN_SHA256` | SHA-256 of `RELEASE_DEPLOY_TOKEN` (only the hash, like terminal tokens) |
-| `GITHUB_RELEASES_TOKEN` | Fine-grained token, repository `amlcx/mpf-pos` only, Contents: read |
 
-Dokploy also needs to pull `ghcr.io/amlcx/mpf-pos-api:stable`: add GHCR as a
-registry with a token that has `read:packages`.
+Get the hash with `printf %s 'the-token' | sha256sum` and copy only the hex part.
+
+The repository is public, so registers download installers straight from
+the GitHub Release. The server needs no GitHub token.
+
+## Making the API image pullable (once)
+
+New container packages on GHCR start private, even in a public repository.
+After the first `release` run:
+
+1. GitHub profile -> Packages -> `mpf-pos-api` -> Package settings.
+2. Danger Zone -> Change visibility -> Public.
+3. In Dokploy, set the app's image to `ghcr.io/amlcx/mpf-pos-api:stable`
+   with no registry. Nothing secret goes in the image; secrets stay in
+   Dokploy's environment variables.
+
+## Public repository safeguards
+
+- Scan the whole git history for secrets (`gitleaks detect`). Rotate any real
+  production token or password that was ever committed.
+- Settings -> Actions -> General: require approval for workflows from all
+  outside collaborators.
+- Never use `pull_request_target`, and never give `ci.yml` secrets.
+- Settings -> Rules: a tag ruleset for `v*` so only you can create release
+  tags, and a branch ruleset for `main` (pull requests, `ci / checks` passing).
+- Never attach a self-hosted runner to this repository.
+- Production must never accept the seed tokens (`mpf_dev_terminal_a`/`_b`)
+  or the demo users from `pnpm db:seed`.
 
 ## A release, end to end
 

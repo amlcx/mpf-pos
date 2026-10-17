@@ -144,7 +144,7 @@ export function createManageRoutes(deps: { sql: Sql; sessionSecret: string }) {
   });
 
   // --------------------------------------------------------- terminals
-  const TERMINAL_COLUMNS = sql`id, store_id, code, name, active, last_seen_at`;
+  const TERMINAL_COLUMNS = sql`id, store_id, code, name, active, last_seen_at, app_version, release_ring`;
 
   m.get('/stores/:storeId/terminals', async (c) => {
     const terminals = await sql<ManagedTerminal[]>`
