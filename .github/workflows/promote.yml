@@ -1,0 +1,33 @@
+# Manual step 2 of a rollout: after a day of normal sales on the pilot
+# registers, offer the same release to every register.
+name: promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version running on the pilot ring (e.g. 1.4.0)'
+        required: true
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Promote pilot to stable
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+          RELEASE_DEPLOY_TOKEN: ${{ secrets.RELEASE_DEPLOY_TOKEN }}
+        run: node scripts/offer-release.mjs promote --version "${{ inputs.version }}"

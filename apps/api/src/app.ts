@@ -43,6 +43,8 @@ const Resolution = v.object({ resolution: v.pipe(v.string(), v.trim(), v.minLeng
 export interface AppDeps {
   sql: Sql;
   sessionSecret: string;
+  /** Release this server runs, reported by /health so deploys can wait for it. */
+  version?: string;
   /** Folder with the built admin panel (apps/admin/dist), served at /panel/. */
   panelDir?: string;
 }
@@ -65,7 +67,7 @@ export function createApp(deps: AppDeps) {
 
   app.get('/health', async (c) => {
     await sql`select 1`;
-    return c.json({ ok: true });
+    return c.json({ ok: true, version: deps.version ?? 'dev' });
   });
 
   // The web admin panel and its API authenticate people, not terminals, so
