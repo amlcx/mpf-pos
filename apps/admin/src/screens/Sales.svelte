@@ -8,6 +8,8 @@
     formatCents,
     ordersXlsx,
     presets,
+    productSales,
+    productsXlsx,
     rangeBounds,
     summarize,
     validRange,
@@ -28,6 +30,8 @@
   ];
 
   let range = $state<DateRange>({ ...quick.today });
+  // What the list (and the Excel export) shows: every order, or units and money per product.
+  let view = $state<'orders' | 'products'>('orders');
   let orders = $state<ReportOrder[]>([]);
   let conflicts = $state<StockConflict[]>([]);
   let selected = $state<ReportOrder | null>(null);
@@ -37,6 +41,7 @@
   const store = $derived(currentStore());
   const money = (cents: number) => formatCents(cents, store?.currencySymbol ?? '');
   const summary = $derived(summarize(orders));
+  const products = $derived(view === 'products' ? productSales(orders) : []);
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   const when = (iso: string) => new Date(iso).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' });
 
@@ -71,16 +76,13 @@
   function exportExcel() {
     const wanted = $state.snapshot(range);
     const days = wanted.from === wanted.to ? wanted.from : `${wanted.from}_${wanted.to}`;
-    const file = ordersXlsx($state.snapshot(orders), {
-      businessName: BUSINESS_NAME,
-      storeName: store?.name ?? '',
-      range: wanted,
-    });
+    const info = { businessName: BUSINESS_NAME, storeName: store?.name ?? '', range: wanted };
+    const file = (view === 'products' ? productsXlsx : ordersXlsx)($state.snapshot(orders), info);
     const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     const url = URL.createObjectURL(new Blob([file as Uint8Array<ArrayBuffer>], { type }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = `pedidos-${store?.code.toLowerCase() ?? 'tienda'}_${days}.xlsx`;
+    link.download = `${view === 'products' ? 'productos' : 'pedidos'}-${store?.code.toLowerCase() ?? 'tienda'}_${days}.xlsx`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -169,32 +171,63 @@
       </table>
     {/if}
 
-    <h3>Pedidos de {store?.name}</h3>
-    <table>
-      <thead>
-        <tr><th>Tiquete</th><th>Hora</th><th class="optional">Cajero</th><th class="num">Total</th><th>Estado</th></tr>
-      </thead>
-      <tbody>
-        {#each orders.slice(0, MAX_ROWS) as o (o.id)}
-          <tr class:selected={selected?.id === o.id} class:voided={o.status === 'voided'} onclick={() => { selected = o; message = ''; }}>
-            <td class="nowrap">{o.ticketNumber}</td>
-            <td>{when(o.createdAt)}</td>
-            <td class="optional">{o.cashierName ?? ''}</td>
-            <td class="num">{money(o.totalCents)}</td>
-            <td>
-              {#if o.status === 'voided'}<span class="pill bad">Anulado</span>{/if}
-              {#if o.discountKind}<span class="pill warn">Tarjeta</span>{/if}
-            </td>
-          </tr>
-        {:else}
-          <tr><td colspan="5" class="muted hand">No hay pedidos en estas fechas.</td></tr>
-        {/each}
-      </tbody>
-    </table>
-    {#if orders.length > MAX_ROWS}
+    <div class="row">
+      <button class:active={view === 'orders'} aria-pressed={view === 'orders'} onclick={() => (view = 'orders')}>Pedidos</button>
+      <button class:active={view === 'products'} aria-pressed={view === 'products'} onclick={() => (view = 'products')}>
+        Por producto
+      </button>
+    </div>
+
+    {#if view === 'products'}
+      <h3>Ventas por producto en {store?.name}</h3>
+      <table>
+        <thead>
+          <tr><th>Producto</th><th class="num">Unidades</th><th class="num">Ventas</th></tr>
+        </thead>
+        <tbody>
+          {#each products as p (p.productId)}
+            <tr><td>{p.name}</td><td class="num">{p.quantity}</td><td class="num">{money(p.totalCents)}</td></tr>
+          {:else}
+            <tr><td colspan="3" class="muted hand">No hay ventas en estas fechas.</td></tr>
+          {/each}
+        </tbody>
+        {#if products.length > 0}
+          <tfoot>
+            <tr><th>Total</th><th class="num">{summary.itemCount}</th><th class="num">{money(summary.salesCents)}</th></tr>
+          </tfoot>
+        {/if}
+      </table>
       <p class="muted">
-        Se muestran los {MAX_ROWS} más recientes de {orders.length}. El resumen y el archivo de Excel los incluyen todos.
+        Ventas es lo cobrado: con el descuento de tarjeta de fidelidad e impuesto incluido. Los pedidos anulados no cuentan.
       </p>
+    {:else}
+      <h3>Pedidos de {store?.name}</h3>
+      <table>
+        <thead>
+          <tr><th>Tiquete</th><th>Hora</th><th class="optional">Cajero</th><th class="num">Total</th><th>Estado</th></tr>
+        </thead>
+        <tbody>
+          {#each orders.slice(0, MAX_ROWS) as o (o.id)}
+            <tr class:selected={selected?.id === o.id} class:voided={o.status === 'voided'} onclick={() => { selected = o; message = ''; }}>
+              <td class="nowrap">{o.ticketNumber}</td>
+              <td>{when(o.createdAt)}</td>
+              <td class="optional">{o.cashierName ?? ''}</td>
+              <td class="num">{money(o.totalCents)}</td>
+              <td>
+                {#if o.status === 'voided'}<span class="pill bad">Anulado</span>{/if}
+                {#if o.discountKind}<span class="pill warn">Tarjeta</span>{/if}
+              </td>
+            </tr>
+          {:else}
+            <tr><td colspan="5" class="muted hand">No hay pedidos en estas fechas.</td></tr>
+          {/each}
+        </tbody>
+      </table>
+      {#if orders.length > MAX_ROWS}
+        <p class="muted">
+          Se muestran los {MAX_ROWS} más recientes de {orders.length}. El resumen y el archivo de Excel los incluyen todos.
+        </p>
+      {/if}
     {/if}
   </section>
 

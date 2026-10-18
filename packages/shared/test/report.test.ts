@@ -10,6 +10,8 @@ import {
   ordersCsv,
   ordersXlsx,
   presets,
+  productSales,
+  productsXlsx,
   rangeBounds,
   summarize,
   uuidv7,
@@ -130,6 +132,76 @@ describe('reports', () => {
     expect(raw).not.toContain('<f>');
 
     const empty = new TextDecoder().decode(ordersXlsx([], { businessName: 'X', storeName: 'Y', range: { from: '2026-10-07', to: '2026-10-07' } }));
+    expect(empty).not.toContain('tables/table1.xml');
+  });
+
+  it('totals each product at what was charged, loyalty card discounts included', () => {
+    const card: ReportOrder = {
+      ...buildOrder({
+        cart: [
+          { productId: flan, name: 'Flan', unitPriceCents: 1_200_000, quantity: 2 },
+          { productId: cafe, name: 'Café', unitPriceCents: 900_000, quantity: 1 },
+        ],
+        payments: [{ method: 'cash', amountCents: 1_650_000 }],
+        cashierId: uuidv7(), terminalCode: 'A', ticketSeq: 98, taxRateBps: 800, taxIncluded: true,
+        discountKind: 'loyalty_card',
+      }),
+      status: 'completed',
+      cashierName: 'Ana',
+    };
+    // orders[0]: 2 flans 24.000 + 1 café 9.000; orders[1]: 3 cafés 27.000;
+    // card: the same as orders[0] at half price; orders[2] is voided.
+    const products = productSales([...orders, card]);
+    expect(products).toEqual([
+      { productId: cafe, name: 'Café', quantity: 5, totalCents: 900_000 + 2_700_000 + 450_000 },
+      { productId: flan, name: 'Flan', quantity: 4, totalCents: 2_400_000 + 1_200_000 },
+    ]);
+    expect(summarize([...orders, card]).topProducts).toEqual(products);
+  });
+
+  it('splits an order over its products to the exact cent', () => {
+    // Tax added on top of a discounted 3 + 3 + 1 cents: a total that does not divide evenly.
+    const odd: ReportOrder = {
+      ...buildOrder({
+        cart: [
+          { productId: flan, name: 'Flan', unitPriceCents: 3, quantity: 1 },
+          { productId: cafe, name: 'Café', unitPriceCents: 3, quantity: 1 },
+          { productId: uuidv7(), name: 'Té', unitPriceCents: 1, quantity: 1 },
+        ],
+        payments: [{ method: 'digital', amountCents: 5 }],
+        cashierId: uuidv7(), terminalCode: 'A', ticketSeq: 97, taxRateBps: 1900, taxIncluded: false,
+        discountKind: 'loyalty_card',
+      }),
+      status: 'completed',
+      cashierName: 'Ana',
+    };
+    const products = productSales([odd]);
+    expect(products.reduce((sum, p) => sum + p.totalCents, 0)).toBe(odd.totalCents);
+    // 7 - 4 discount = 3, plus 1 tax: 4 cents over 3/7, 3/7, 1/7 (1,71 · 1,71 · 0,57).
+    expect(odd.totalCents).toBe(4);
+    expect(products.map((p) => p.totalCents)).toEqual([2, 2, 0]);
+    expect(productSales([])).toEqual([]);
+  });
+
+  it('exports sales per product to Excel, with a total that matches the sales', () => {
+    const file = productsXlsx(orders, {
+      businessName: 'Mi Postre',
+      storeName: 'Centro',
+      range: { from: '2026-10-07', to: '2026-10-07' },
+      exportedAt: new Date(2026, 9, 9, 8, 30),
+    });
+    const raw = new TextDecoder().decode(file);
+    for (const text of ['Ventas por producto · Centro', '07/10/2026', 'Producto', 'Unidades', 'Café', 'Flan', 'Total']) {
+      expect(raw, text).toContain(`<t xml:space="preserve">${text}</t>`);
+    }
+    // 11 rows above the table, headings on row 12, two products; the total is below it.
+    expect(raw).toContain('ref="A12:C14"');
+    expect(raw).toContain('<c r="B13"><v>4</v></c>');
+    expect(raw).toContain('<c r="C13" s="3"><v>36000</v></c>');
+    expect(raw).toContain('<c r="C16" s="5"><v>60000</v></c>');
+    expect(raw).not.toContain('<f>');
+
+    const empty = new TextDecoder().decode(productsXlsx([], { businessName: 'X', storeName: 'Y', range: { from: '2026-10-07', to: '2026-10-07' } }));
     expect(empty).not.toContain('tables/table1.xml');
   });
 
