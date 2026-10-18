@@ -147,12 +147,13 @@ export function insertOrder(order: Order, syncStatus: SyncStatus): Statement[] {
   return [
     {
       sql: `insert into orders (id, cashier_id, ticket_seq, ticket_number, created_at, tax_rate_bps,
-              tax_included, discount_kind, discount_cents, subtotal_cents, tax_cents, total_cents, sync_status)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              tax_included, discount_kind, discount_cents, subtotal_cents, tax_cents, total_cents, sync_status,
+              cash_session_id)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
         order.id, order.cashierId, order.ticketSeq, order.ticketNumber, order.createdAt,
         order.taxRateBps, +order.taxIncluded, order.discountKind, order.discountCents,
-        order.subtotalCents, order.taxCents, order.totalCents, syncStatus,
+        order.subtotalCents, order.taxCents, order.totalCents, syncStatus, order.cashSessionId,
       ],
     },
     ...order.lines.map((l) => ({
@@ -208,6 +209,7 @@ export function markSynced(orderId: string, opts: { oversold: boolean; adjustSto
 const ORDER_SELECT = `select id, cashier_id as cashierId, ticket_seq as ticketSeq,
   ticket_number as ticketNumber, created_at as createdAt, tax_rate_bps as taxRateBps,
   tax_included as taxIncluded, discount_kind as discountKind, discount_cents as discountCents,
+  cash_session_id as cashSessionId,
   subtotal_cents as subtotalCents, tax_cents as taxCents,
   total_cents as totalCents, status, sync_status as syncStatus, sync_error as syncError, oversold,
   (select name from users where users.id = orders.cashier_id) as cashierName
@@ -265,4 +267,9 @@ export async function countBySyncStatus(db: LocalDb): Promise<Record<SyncStatus,
   const counts = { submitting: 0, pending: 0, synced: 0, failed: 0 };
   for (const row of rows) counts[row.syncStatus] = row.n;
   return counts;
+}
+
+/** The sales whose cash went into a drawer, voided ones included (they add nothing). */
+export async function listOrdersOfDrawer(db: LocalDb, drawerId: string): Promise<LocalOrder[]> {
+  return hydrate(db, await db.select(`${ORDER_SELECT} where cash_session_id = ? order by ticket_seq`, [drawerId]));
 }

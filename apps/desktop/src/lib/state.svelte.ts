@@ -1,6 +1,8 @@
 import { BUSINESS_NAME } from '@mpf/brand';
 import {
   type CartItem,
+  type CashCount,
+  type CashMovement,
   type DateRange,
   type DiscountKind,
   type PaymentInput,
@@ -12,6 +14,7 @@ import {
 } from '@mpf/shared';
 import { ApiClient, ApiError, NetworkError } from './api.ts';
 import { type Session, login } from './auth.ts';
+import { type CloseResult, type DrawerStatus, closeDrawer, drawerStatus, moveCash, openDrawer } from './cash.ts';
 import { type CheckoutResult, cartFromOrder, checkout, checkoutInProgress } from './checkout.ts';
 import { migrateLocal } from './local-db.ts';
 import {
@@ -55,6 +58,10 @@ export const app = $state({
    * they start hidden and hide again whenever someone signs out.
    */
   showAmounts: false,
+  /** This register's drawer: open for today, left open from an earlier day, or closed. */
+  drawer: { state: 'closed' } as DrawerStatus,
+  /** Names of the people this register knows, by id (for who opened or moved cash). */
+  people: {} as Record<string, string>,
 });
 
 export interface Resale {
@@ -101,6 +108,9 @@ export async function refresh(): Promise<void> {
   app.context = await loadContext(db);
   app.products = await listProducts(db);
   app.counts = await countBySyncStatus(db);
+  app.drawer = await drawerStatus(db);
+  const people = await db.select<{ id: string; name: string }>('select id, name from users');
+  app.people = Object.fromEntries(people.map((p) => [p.id, p.name]));
 }
 
 let syncing = false;
@@ -336,4 +346,33 @@ export async function installUpdate(): Promise<string | null> {
   } catch (err) {
     return `No se pudo instalar la actualización: ${errorText(err)}`;
   }
+}
+
+// -------------------------------------------------------------- cash drawer
+// Opening, moving and closing work offline, like selling: the drawer is saved
+// here and sent with the next sync.
+
+const me = () => app.session!.user.id;
+
+export async function openCashDrawer(count: CashCount): Promise<string | null> {
+  const result = await openDrawer(db, { count, userId: me() });
+  await refresh();
+  void syncNow();
+  return result.ok ? null : 'Ya hay una caja abierta.';
+}
+
+export async function moveDrawerCash(kind: CashMovement['kind'], amountCents: number, reason: string): Promise<string | null> {
+  const result = await moveCash(db, { kind, amountCents, reason, userId: me() });
+  await refresh();
+  void syncNow();
+  if (result.ok) return null;
+  return result.reason === 'invalid' ? 'Escribe un valor mayor que cero y el motivo.' : 'La caja no está abierta.';
+}
+
+/** The first call with a count that does not match only reports the difference. */
+export async function closeCashDrawer(count: CashCount, note = ''): Promise<CloseResult> {
+  const result = await closeDrawer(db, { count, userId: me(), note });
+  await refresh();
+  if (result.ok) void syncNow();
+  return result;
 }

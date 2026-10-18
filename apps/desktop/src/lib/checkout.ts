@@ -7,6 +7,7 @@ import {
   buildOrder,
   orderProblems,
 } from '@mpf/shared';
+import { drawerStatus } from './cash.ts';
 import { type LocalOrder, getOrder, insertOrder, listProducts, loadContext } from './repo.ts';
 import { type SyncDeps, pull, pushOrder } from './sync.ts';
 
@@ -14,7 +15,9 @@ export type CheckoutResult =
   /** synced = false: sold offline, will be sent to the server later. */
   | { ok: true; order: LocalOrder; synced: boolean }
   | { ok: false; reason: 'insufficient_stock'; items: InsufficientStockItem[] }
-  | { ok: false; reason: 'invalid'; problems: string[] };
+  | { ok: false; reason: 'invalid'; problems: string[] }
+  /** No drawer open for today (or yesterday's is still open): open or close it first. */
+  | { ok: false; reason: 'drawer_closed' };
 
 export interface CheckoutInput {
   cart: CartItem[];
@@ -59,6 +62,9 @@ async function checkoutNow(deps: SyncDeps, input: CheckoutInput): Promise<Checko
   const { db } = deps;
   const context = await loadContext(db);
   if (!context) return { ok: false, reason: 'invalid', problems: ['terminal is not set up'] };
+  // Every sale's cash goes into a counted drawer of the current business day.
+  const drawer = await drawerStatus(db, input.now);
+  if (drawer.state !== 'open') return { ok: false, reason: 'drawer_closed' };
 
   // Never sell what this terminal already knows is gone, online or not.
   const wanted = new Map<string, number>();
@@ -84,6 +90,7 @@ async function checkoutNow(deps: SyncDeps, input: CheckoutInput): Promise<Checko
     ticketSeq: context.nextTicketSeq,
     taxRateBps: context.store.taxRateBps,
     taxIncluded: context.store.taxIncluded,
+    cashSessionId: drawer.drawer.id,
     now: input.now,
   });
   const problems = orderProblems(order);

@@ -3,17 +3,19 @@
   import { BUSINESS_NAME } from '@mpf/brand';
   import logo from '@mpf/brand/logo.webp';
   import { app, boot, installUpdate, signOut, syncNow } from './lib/state.svelte.ts';
+  import Cash from './screens/Cash.svelte';
   import Login from './screens/Login.svelte';
   import Orders from './screens/Orders.svelte';
   import Pos from './screens/Pos.svelte';
   import Products from './screens/Products.svelte';
   import Setup from './screens/Setup.svelte';
 
-  type Tab = 'sell' | 'orders' | 'products' | 'settings';
+  type Tab = 'sell' | 'cash' | 'orders' | 'products' | 'settings';
   let tab = $state<Tab>('sell');
   const isAdmin = $derived(app.session?.user.role === 'admin');
   const tabs = $derived<[Tab, string][]>([
     ['sell', 'Vender'],
+    ['cash', 'Caja'],
     ['orders', 'Pedidos'],
     ...(isAdmin ? ([['products', 'Productos'], ['settings', 'Ajustes']] as [Tab, string][]) : []),
   ]);
@@ -82,8 +84,13 @@
     </p>
   {/if}
   <main>
-    {#if tab === 'sell'}
+    {#if tab === 'sell' && app.drawer.state !== 'open'}
+      <!-- No selling before the drawer is counted: Vender opens (or closes) it first. -->
+      <Cash />
+    {:else if tab === 'sell'}
       <Pos />
+    {:else if tab === 'cash'}
+      <Cash />
     {:else if tab === 'orders'}
       <Orders />
     {:else if tab === 'products' && isAdmin}

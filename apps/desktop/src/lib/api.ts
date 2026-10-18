@@ -1,4 +1,5 @@
 import type {
+  CashSession,
   LoginResponse,
   Order,
   Product,
@@ -80,6 +81,8 @@ export class ApiClient {
     this.request<LoginResponse>('POST', '/auth/login', { username, password });
   submitOrder = (order: Order, stockPolicy: StockPolicy) =>
     this.request<SubmitOrderResponse>('POST', '/orders', { order, stockPolicy });
+  saveCashSession = (session: CashSession) =>
+    this.request<{ status: string }>('PUT', `/cash-sessions/${session.id}`, session);
   voidOrder = (id: string, reason: string) =>
     this.request<{ status: string }>('POST', `/orders/${id}/void`, { reason });
   setSoldOut = (id: string, soldOut: boolean) =>

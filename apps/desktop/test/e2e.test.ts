@@ -3,6 +3,7 @@
 import { type World, call, createWorld, stockOf } from '@mpf/api/testing';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ApiClient, type FetchLike } from '../src/lib/api.ts';
+import { closeDrawer, drawerStatus, moveCash, openDrawer } from '../src/lib/cash.ts';
 import { login } from '../src/lib/auth.ts';
 import { cartFromOrder, checkout, checkoutInProgress } from '../src/lib/checkout.ts';
 import { type LocalDb, migrateLocal } from '../src/lib/local-db.ts';
@@ -23,7 +24,7 @@ interface Terminal extends SyncDeps {
   available(product: keyof World['products']): Promise<number | null>;
 }
 
-async function terminal(code: 'A' | 'B', db: LocalDb = createNodeDb()): Promise<Terminal> {
+async function terminal(code: 'A' | 'B', db: LocalDb = createNodeDb(), openDrawerFirst = true): Promise<Terminal> {
   const net: Terminal['net'] = { up: true, dropResponses: false, hold: null };
   const fetch: FetchLike = async (url, init) => {
     if (!net.up) throw new TypeError('fetch failed');
@@ -36,6 +37,8 @@ async function terminal(code: 'A' | 'B', db: LocalDb = createNodeDb()): Promise<
   await migrateLocal(db);
   const deps = { db, api };
   await syncOnce(deps);
+  // Selling needs a counted drawer; these registers start with an empty one.
+  if (openDrawerFirst) await openDrawer(db, { count: {}, userId: w.cashierId });
   return {
     ...deps,
     net,
@@ -347,5 +350,88 @@ describe('terminals against the server', () => {
     const fresh = await terminal('A');
     expect((await loadContext(fresh.db))!.nextTicketSeq).toBe(before);
     expect(await fresh.sell({ coffee: 1 })).toMatchObject({ ok: true, synced: true });
+  });
+});
+
+describe('cash drawer', () => {
+  /** A register as it is first thing in the morning: synced, drawer not opened. */
+  const fresh = (code: 'A' | 'B') => terminal(code, createNodeDb(), false);
+
+  it('selling needs a drawer opened for the day', async () => {
+    const t = await fresh('B');
+    const tickets = (await loadContext(t.db))!.nextTicketSeq;
+    expect(await t.sell({ brownie: 1 })).toEqual({ ok: false, reason: 'drawer_closed' });
+    expect((await loadContext(t.db))!.nextTicketSeq).toBe(tickets);
+
+    const opened = await openDrawer(t.db, { count: { '2000000': 1 }, userId: w.cashierId });
+    if (!opened.ok) throw new Error('unreachable');
+    const sale = await t.sell({ brownie: 1 });
+    expect(sale).toMatchObject({ ok: true, synced: true, order: { cashSessionId: opened.drawer.id } });
+    expect(await openDrawer(t.db, { count: {}, userId: w.cashierId })).toEqual({ ok: false, reason: 'already_open' });
+  });
+
+  it('a whole day offline: opened, sold, cash moved, closed blind, and the server gets it all', async () => {
+    await setStock('brownie', 50);
+    const t = await fresh('A');
+    t.net.up = false;
+    const opened = await openDrawer(t.db, { count: { '5000000': 1 }, userId: w.cashierId }); // 50.000
+    if (!opened.ok) throw new Error('unreachable');
+    const products = await listProducts(t.db);
+    const brownie = products.find((p) => p.id === w.products.brownie)!;
+    // Five brownies at $10 each, paid in cash: one $50 coin.
+    const sale = await checkout(t, {
+      cart: [{ productId: brownie.id, name: brownie.name, unitPriceCents: brownie.priceCents, quantity: 5 }],
+      payments: [{ method: 'cash', amountCents: 5000, tenderedCents: 5000 }],
+      cashierId: w.cashierId,
+      online: false,
+    });
+    expect(sale).toMatchObject({ ok: true, synced: false });
+    expect(await moveCash(t.db, { kind: 'out', amountCents: 1_000_000, reason: 'A la caja fuerte', userId: w.cashierId })).toEqual({ ok: true });
+    expect(await moveCash(t.db, { kind: 'in', amountCents: 200_000, reason: 'Más sencillo', userId: w.cashierId })).toEqual({ ok: true });
+    expect(await moveCash(t.db, { kind: 'out', amountCents: 100, reason: '  ', userId: w.cashierId })).toEqual({ ok: false, reason: 'invalid' });
+
+    // 50.000 + 50 - 10.000 + 2.000 = 42.050 expected. The cashier forgets the coin:
+    const short = await closeDrawer(t.db, { count: { '2000000': 2, '200000': 1 }, userId: w.cashierId });
+    expect(short).toEqual({ ok: false, reason: 'note_required', expectedCents: 4_205_000, countedCents: 4_200_000 });
+    expect((await drawerStatus(t.db)).state).toBe('open'); // nothing saved yet
+    // ...counts again and it matches.
+    const closed = await closeDrawer(t.db, { count: { '2000000': 2, '200000': 1, '5000': 1 }, userId: w.cashierId });
+    expect(closed).toMatchObject({ ok: true, expectedCents: 4_205_000, countedCents: 4_205_000 });
+    expect((await drawerStatus(t.db)).state).toBe('closed');
+    expect(await t.sell({ brownie: 1 }, false)).toEqual({ ok: false, reason: 'drawer_closed' });
+
+    t.net.up = true;
+    await syncOnce(t);
+    const [row] = await w.sql`
+      select terminal_id, opening_cents, counted_cents, expected_cents, close_note,
+        (select count(*)::int from cash_movements m where m.session_id = s.id) as movements
+      from cash_sessions s where id = ${opened.drawer.id}`;
+    expect(row).toEqual({
+      terminalId: w.terminals.A.id,
+      openingCents: 5_000_000,
+      countedCents: 4_205_000,
+      expectedCents: 4_205_000,
+      closeNote: '',
+      movements: 2,
+    });
+    if (!sale.ok) throw new Error('unreachable');
+    const [order] = await w.sql`select cash_session_id from orders where id = ${sale.order.id}`;
+    expect(order!.cashSessionId).toBe(opened.drawer.id);
+    // Nothing left to send: a second round changes nothing.
+    await syncOnce(t);
+    expect((await w.sql`select count(*)::int as n from cash_movements where session_id = ${opened.drawer.id}`)[0]!.n).toBe(2);
+  });
+
+  it('a drawer left open from an earlier day is closed before anything else', async () => {
+    const t = await fresh('B');
+    const yesterday = new Date(Date.now() - 30 * 60 * 60 * 1000);
+    await openDrawer(t.db, { count: {}, userId: w.cashierId, now: yesterday });
+    expect((await drawerStatus(t.db)).state).toBe('stale');
+    expect(await t.sell({ brownie: 1 })).toEqual({ ok: false, reason: 'drawer_closed' });
+    expect(await openDrawer(t.db, { count: {}, userId: w.cashierId })).toEqual({ ok: false, reason: 'already_open' });
+
+    expect(await closeDrawer(t.db, { count: {}, userId: w.cashierId })).toMatchObject({ ok: true });
+    expect((await openDrawer(t.db, { count: {}, userId: w.cashierId })).ok).toBe(true);
+    expect(await t.sell({ brownie: 1 })).toMatchObject({ ok: true, synced: true });
   });
 });
