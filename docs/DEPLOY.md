@@ -235,7 +235,8 @@ shows the version each register last reported.
 
 1. Merge into `main` what the release should contain (CI must pass).
 2. `git tag vX.Y.Z && git push origin vX.Y.Z`. The **release** workflow runs
-   the checks again, pushes `ghcr.io/amlcx/mpf-pos-api:X.Y.Z` and creates the
+   the checks again, pushes `ghcr.io/amlcx/mpf-pos-api:X.Y.Z` (for amd64 and
+   arm64; the server is arm64) and creates the
    GitHub Release with the signed installer and `latest.json`. Nothing is
    deployed yet.
 3. GitHub → Actions → **deploy** → Run workflow → `X.Y.Z`. It moves the image
