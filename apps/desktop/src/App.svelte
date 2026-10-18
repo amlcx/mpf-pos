@@ -23,6 +23,11 @@
     updateError = (await installUpdate()) ?? '';
   }
 
+  // "Anular y cambiar método de pago" continues on the sale screen.
+  $effect(() => {
+    if (app.resale) tab = 'sell';
+  });
+
   onMount(boot);
 </script>
 

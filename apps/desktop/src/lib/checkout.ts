@@ -2,6 +2,7 @@ import {
   type CartItem,
   type DiscountKind,
   type InsufficientStockItem,
+  type Order,
   type PaymentInput,
   buildOrder,
   orderProblems,
@@ -23,6 +24,21 @@ export interface CheckoutInput {
   /** Skip the server round trip when we already know we are offline. */
   online: boolean;
   now?: Date;
+}
+
+/**
+ * The cart of an earlier sale, to charge it again (say, after voiding it for
+ * the wrong payment method). Names and prices are the ones that sale was
+ * made at, so later catalog edits do not change what the customer pays.
+ */
+export function cartFromOrder(order: Pick<Order, 'lines'>): CartItem[] {
+  const cart: CartItem[] = [];
+  for (const line of order.lines) {
+    const same = cart.find((i) => i.productId === line.productId && i.unitPriceCents === line.unitPriceCents);
+    if (same) same.quantity += line.quantity;
+    else cart.push({ productId: line.productId, name: line.name, unitPriceCents: line.unitPriceCents, quantity: line.quantity });
+  }
+  return cart;
 }
 
 // One sale at a time: ticket numbers are read, then written.
