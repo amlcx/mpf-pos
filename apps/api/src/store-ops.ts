@@ -1,4 +1,4 @@
-import type { Product, ReportOrder, StockChange, StockConflict } from '@mpf/shared';
+import type { Product, ReportOrder, StockChange, StockConflict, StoreCashSession } from '@mpf/shared';
 import type { Sql } from './db.ts';
 
 /**
@@ -128,4 +128,29 @@ export async function resolveConflict(
     where id = ${input.id} and store_id = ${input.storeId} and resolved_at is null
     returning id`;
   return rows.length > 0;
+}
+
+/** A store's drawers whose business day is within from..to (inclusive), newest first. */
+export async function listCashSessions(sql: Sql, storeId: string, from: string, to: string): Promise<StoreCashSession[]> {
+  const sessions = await sql<Omit<StoreCashSession, 'movements'>[]>`
+    select s.id, t.code as terminal_code, t.name as terminal_name, s.business_date::text as business_date,
+      opener.name as opened_by_name, s.opened_at, s.opening_cents,
+      closer.name as closed_by_name, s.closed_at, s.counted_cents, s.expected_cents, s.close_note as note
+    from cash_sessions s
+    join terminals t on t.id = s.terminal_id
+    join users opener on opener.id = s.opened_by
+    left join users closer on closer.id = s.closed_by
+    where s.store_id = ${storeId} and s.business_date between ${from}::date and ${to}::date
+    order by s.business_date desc, s.opened_at desc
+    limit 500`;
+  if (sessions.length === 0) return [];
+  const movements = await sql<(StoreCashSession['movements'][number] & { sessionId: string })[]>`
+    select m.id, m.session_id, m.kind, m.amount_cents, m.reason, m.user_id, u.name as user_name, m.created_at
+    from cash_movements m join users u on u.id = m.user_id
+    where m.session_id in ${sql(sessions.map((s) => s.id))}
+    order by m.created_at, m.id`;
+  return sessions.map((s) => ({
+    ...s,
+    movements: movements.filter((m) => m.sessionId === s.id).map(({ sessionId: _, ...m }) => m),
+  }));
 }

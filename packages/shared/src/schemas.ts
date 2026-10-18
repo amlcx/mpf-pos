@@ -381,3 +381,27 @@ export const CashSessionSchema = v.object({
   closing: v.nullable(CashClosingSchema),
 });
 export type CashSession = v.InferOutput<typeof CashSessionSchema>;
+
+/** Business days, both inclusive (yyyy-mm-dd), to list drawers in the panel. */
+export const BusinessDayRangeSchema = v.object({
+  from: v.pipe(v.string(), v.isoDate()),
+  to: v.pipe(v.string(), v.isoDate()),
+});
+
+/** A drawer as the panel shows it: with names instead of ids. */
+export interface StoreCashSession {
+  id: string;
+  terminalCode: string;
+  terminalName: string;
+  businessDate: string;
+  openedByName: string;
+  openedAt: string;
+  openingCents: number;
+  movements: (CashMovement & { userName: string })[];
+  /** null while the drawer is still open. */
+  closedByName: string | null;
+  closedAt: string | null;
+  countedCents: number | null;
+  expectedCents: number | null;
+  note: string;
+}

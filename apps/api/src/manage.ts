@@ -1,5 +1,6 @@
 import {
   ADMIN_PASSWORD_MIN,
+  BusinessDayRangeSchema,
   LoginRequestSchema,
   type ManagedTerminal,
   type ManagedUser,
@@ -29,6 +30,7 @@ import { voidOrder } from './orders.ts';
 import {
   changeStock,
   getProduct,
+  listCashSessions,
   listConflicts,
   listOrders,
   listProducts,
@@ -286,6 +288,13 @@ export function createManageRoutes(deps: { sql: Sql; sessionSecret: string }) {
     const storeId = storeParam(c);
     const { from, to } = parse(ReportRangeSchema, c.req.query());
     return c.json({ orders: await listOrders(sql, storeId, from, to) });
+  });
+
+  /** Every register's drawers, by business day: openings, cash moved, closings and differences. */
+  m.get('/stores/:storeId/cash-sessions', async (c) => {
+    const storeId = storeParam(c);
+    const { from, to } = parse(BusinessDayRangeSchema, c.req.query());
+    return c.json({ sessions: await listCashSessions(sql, storeId, from, to) });
   });
 
   m.post('/stores/:storeId/orders/:id/void', async (c) => {

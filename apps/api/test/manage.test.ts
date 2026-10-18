@@ -1,4 +1,4 @@
-import type { PullResponse } from '@mpf/shared';
+import { type PullResponse, uuidv7 } from '@mpf/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createStore, createUser } from '../src/fixtures.ts';
 import { type World, call, createWorld, makeOrder, stockOf } from './helpers.ts';
@@ -207,5 +207,65 @@ describe('orders', () => {
     expect(voided.json.status).toBe('voided');
     expect(await stockOf(w, 'flan')).toBe(1);
     expect((await manage(local, 'GET', `/stores/${w.storeId}/conflicts`)).json.conflicts).toEqual([]);
+  });
+});
+
+describe('cash drawers', () => {
+  it('shows each register\'s drawers to the admins of its store only', async () => {
+    const id = uuidv7();
+    const drawer = {
+      id,
+      businessDate: '2026-10-07',
+      openedBy: w.cashierId,
+      openedAt: '2026-10-07T13:00:00.000Z',
+      openingCount: { '5000000': 1 },
+      openingCents: 5_000_000,
+      movements: [
+        { id: uuidv7(), kind: 'out', amountCents: 1_000_000, reason: 'A la caja fuerte', userId: w.cashierId, createdAt: '2026-10-07T18:00:00.000Z' },
+      ],
+      closing: {
+        closedBy: w.cashierId,
+        closedAt: '2026-10-08T01:00:00.000Z',
+        count: { '2000000': 2 },
+        countedCents: 4_000_000,
+        expectedCents: 4_100_000,
+        note: 'Faltan 1.000',
+      },
+    };
+    expect((await call(w.app, w.terminals.A.token, 'PUT', `/cash-sessions/${id}`, drawer)).status).toBe(200);
+
+    const listed = await manage(local, 'GET', `/stores/${w.storeId}/cash-sessions?from=2026-10-07&to=2026-10-07`);
+    expect(listed.json.sessions).toEqual([
+      {
+        id,
+        terminalCode: 'A',
+        terminalName: 'Register A',
+        businessDate: '2026-10-07',
+        openedByName: 'Cashier',
+        openedAt: '2026-10-07T13:00:00.000Z',
+        openingCents: 5_000_000,
+        movements: [
+          {
+            id: drawer.movements[0]!.id,
+            kind: 'out',
+            amountCents: 1_000_000,
+            reason: 'A la caja fuerte',
+            userId: w.cashierId,
+            userName: 'Cashier',
+            createdAt: '2026-10-07T18:00:00.000Z',
+          },
+        ],
+        closedByName: 'Cashier',
+        closedAt: '2026-10-08T01:00:00.000Z',
+        countedCents: 4_000_000,
+        expectedCents: 4_100_000,
+        note: 'Faltan 1.000',
+      },
+    ]);
+    // Other days, other stores, and other stores' admins see nothing of it.
+    expect((await manage(local, 'GET', `/stores/${w.storeId}/cash-sessions?from=2026-10-08&to=2026-10-09`)).json.sessions).toEqual([]);
+    expect((await manage(org, 'GET', `/stores/${northId}/cash-sessions?from=2026-10-01&to=2026-10-31`)).json.sessions).toEqual([]);
+    expect((await manage(local, 'GET', `/stores/${northId}/cash-sessions?from=2026-10-01&to=2026-10-31`)).status).toBe(403);
+    expect((await manage(local, 'GET', `/stores/${w.storeId}/cash-sessions?from=ayer&to=hoy`)).status).toBe(400);
   });
 });
