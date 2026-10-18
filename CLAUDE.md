@@ -100,8 +100,15 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
   an `accept` order never is. The flag is ignored for tracked products.
 
 ### Cash drawer
-- Each register has one drawer per business day. A business day starts at
-  5:00 local time (`businessDate`), so a shift past midnight stays in its day.
+- A register has at most one open drawer, belonging to a business day. A
+  business day starts at 5:00 local time (`businessDate`), so a shift past
+  midnight stays in its day. A shift change is a closing plus a new opening.
+- Selling needs a drawer open for the current business day: `checkout`
+  refuses with `drawer_closed` otherwise, and every order records its drawer.
+  A drawer left open from an earlier day must be closed before anything else.
+- Closing is blind: the cashier counts before the register shows what it
+  expected (`closeDrawer` only reports a difference until there is a note).
+  It waits while a sale of that drawer is still `submitting`.
 - `countCents`, `cashSessionProblems` and `expectedCashCents` in
   `packages/shared` are the only definition of a drawer's arithmetic. Expected
   cash = opening count + the cash owed on the drawer's completed sales (the
@@ -137,7 +144,9 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
 - Stock shown on a register = last pulled quantity minus its own orders the
   server has not confirmed. Do not store that number; derive it
   (`listProducts`).
-- Sync rounds push the outbox in ticket order, then pull.
+- Sync rounds push changed drawers, then the outbox in ticket order, then
+  pull. A drawer is sent whole whenever its `version` is ahead of what the
+  server took.
 
 ### Stores, terminals, people
 - The API has two front doors, and each decides the store differently:

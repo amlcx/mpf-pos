@@ -167,6 +167,8 @@
           return `${name} (quedan ${i.available})`;
         });
         notice = `No hay suficientes existencias: ${names.join(', ')}. Ajusta el pedido.`;
+      } else if (result.reason === 'drawer_closed') {
+        notice = 'La caja no está abierta. Ábrela en la pestaña Caja para vender.';
       } else {
         notice = `No se pudo crear el pedido: ${result.problems.join('; ')}`;
       }

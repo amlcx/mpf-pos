@@ -1,5 +1,6 @@
 import type { InsufficientStockItem } from '@mpf/shared';
 import { type ApiClient, ApiError, NetworkError } from './api.ts';
+import { type LocalDrawer, listDirtyDrawers, markDrawerFailed, markDrawerSynced } from './cash.ts';
 import type { LocalDb } from './local-db.ts';
 import { type LocalOrder, applyPull, deleteSubmittingOrder, listOutbox, markSynced } from './repo.ts';
 
@@ -57,18 +58,49 @@ export async function pull({ db, api }: SyncDeps): Promise<boolean> {
   }
 }
 
+/** Sends a drawer, whole, as it is now. Same error rules as orders. */
+export async function pushDrawer(
+  { db, api }: SyncDeps,
+  drawer: LocalDrawer & { version: number },
+): Promise<'synced' | 'failed' | 'unreachable'> {
+  const { syncError: _e, dirty: _d, version, ...session } = drawer;
+  try {
+    await api.saveCashSession(session);
+    await db.batch([markDrawerSynced(drawer.id, version)]);
+    return 'synced';
+  } catch (err) {
+    if (err instanceof NetworkError || (err instanceof ApiError && err.transient)) return 'unreachable';
+    if (!(err instanceof ApiError)) throw err;
+    await db.batch([markDrawerFailed(drawer.id, JSON.stringify(err.body ?? err.message))]);
+    return 'failed';
+  }
+}
+
 /**
- * One sync round: push the outbox in ticket order, then pull. Pushing first
- * means the snapshot we pull already reflects our own sales.
+ * One sync round: push changed drawers, then the outbox in ticket order, then
+ * pull. Drawers go first so the server has them when their sales arrive, and
+ * pushing before pulling means the snapshot already reflects our own sales.
  */
 export async function syncOnce(deps: SyncDeps): Promise<{ online: boolean }> {
-  for (const order of await listOutbox(deps.db)) {
-    const outcome = await pushOrder(deps, order);
-    if (outcome.kind === 'unreachable') break;
+  let reachable = true;
+  for (const drawer of await listDirtyDrawers(deps.db)) {
+    if ((await pushDrawer(deps, drawer)) === 'unreachable') {
+      reachable = false;
+      break;
+    }
+  }
+  if (reachable) {
+    for (const order of await listOutbox(deps.db)) {
+      const outcome = await pushOrder(deps, order);
+      if (outcome.kind === 'unreachable') break;
+    }
   }
   return { online: await pull(deps) };
 }
 
-/** Puts 'failed' orders back in the outbox, e.g. after an admin fixed the cause. */
+/** Puts 'failed' orders and drawers back in line, e.g. after an admin fixed the cause. */
 export const retryFailed = (db: LocalDb) =>
-  db.batch([{ sql: "update orders set sync_status = 'pending', sync_error = null where sync_status = 'failed'" }]);
+  db.batch([
+    { sql: "update orders set sync_status = 'pending', sync_error = null where sync_status = 'failed'" },
+    { sql: 'update cash_sessions set sync_error = null where sync_error is not null' },
+  ]);

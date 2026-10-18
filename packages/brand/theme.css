@@ -205,3 +205,17 @@ tbody tr:hover { background: var(--bg); }
 tr.selected, tr.selected:hover { background: var(--brand-soft); }
 tr.voided td { color: var(--muted); text-decoration: line-through; }
 td.actions { display: flex; gap: 0.4rem; justify-content: flex-end; }
+
+/* Counting the cash drawer, bill by bill */
+.card.wide { width: min(44rem, 100%); }
+.counter { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 0.4rem 1.5rem; }
+.counter h4 { margin: 0.4rem 0 0.1rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.denom { display: grid; grid-template-columns: 5.5rem 5rem 1fr; align-items: center; gap: 0.6rem; }
+.denom span { font-variant-numeric: tabular-nums; }
+.denom .value { font-weight: 700; }
+.denom input { text-align: right; padding: 0.4rem 0.6rem; }
+.denom .sub { text-align: right; color: var(--muted); }
+.sum { display: flex; justify-content: space-between; align-items: baseline; padding-top: 0.6rem; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.sum strong { font-size: 1.6rem; color: var(--on-brand); }
+.sum.good strong { color: var(--good); }
+.sum.bad strong { color: var(--bad); }

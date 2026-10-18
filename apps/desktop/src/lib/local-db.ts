@@ -48,6 +48,20 @@ const MIGRATIONS: string[][] = [
     `alter table orders add column discount_kind text`,
     `alter table orders add column discount_cents integer not null default 0`,
   ],
+  [
+    `create table cash_sessions (
+      id text primary key, business_date text not null,
+      opened_by text not null, opened_at text not null, opening_count text not null, opening_cents integer not null,
+      closed_by text, closed_at text, closing_count text, counted_cents integer, expected_cents integer,
+      close_note text not null default '',
+      version integer not null default 1, synced_version integer not null default 0, sync_error text)`,
+    `create table cash_movements (
+      id text primary key, session_id text not null references cash_sessions (id),
+      kind text not null, amount_cents integer not null, reason text not null,
+      user_id text not null, created_at text not null)`,
+    `create index cash_movements_session_idx on cash_movements (session_id)`,
+    `alter table orders add column cash_session_id text`,
+  ],
 ];
 
 export async function getKv(db: LocalDb, key: string): Promise<string | null> {
