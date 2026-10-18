@@ -50,6 +50,11 @@ export const app = $state({
   update: { status: 'idle' } as UpdateState,
   /** A voided sale to charge again, waiting for the sale screen to pick it up. */
   resale: null as Resale | null,
+  /**
+   * Sales totals on screen, or masked. The screen faces the shop window, so
+   * they start hidden and hide again whenever someone signs out.
+   */
+  showAmounts: false,
 });
 
 export interface Resale {
@@ -160,6 +165,7 @@ export async function signIn(username: string, password: string): Promise<boolea
 export function signOut(): void {
   if (api) api.sessionToken = null;
   app.session = null;
+  app.showAmounts = false;
 }
 
 // ------------------------------------------------------------------ selling
