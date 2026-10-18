@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
   import { boot, panel, signOut } from './lib/state.svelte.ts';
   import Login from './screens/Login.svelte';
+  import Cash from './screens/Cash.svelte';
   import Products from './screens/Products.svelte';
   import Sales from './screens/Sales.svelte';
   import Stores from './screens/Stores.svelte';
@@ -11,6 +12,7 @@
 
   const TABS = [
     ['sales', 'Ventas'],
+    ['cash', 'Cierres de caja'],
     ['products', 'Productos e inventario'],
     ['users', 'Usuarios'],
     ['stores', 'Tienda y cajas'],
@@ -53,6 +55,8 @@
       <div class="centered"><p class="muted hand">Aún no hay tiendas. Crea la primera en “Tienda y cajas”.</p></div>
     {:else if tab === 'sales'}
       {#key panel.storeId}<Sales storeId={panel.storeId} />{/key}
+    {:else if tab === 'cash'}
+      {#key panel.storeId}<Cash storeId={panel.storeId} />{/key}
     {:else}
       {#key panel.storeId}<Products storeId={panel.storeId} />{/key}
     {/if}

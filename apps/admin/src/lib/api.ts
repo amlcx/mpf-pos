@@ -1,4 +1,5 @@
 import type {
+  StoreCashSession,
   ManagedTerminal,
   ManagedUser,
   Product,
@@ -131,6 +132,8 @@ export const api = {
   setSoldOut: (storeId: string, id: string, soldOut: boolean) =>
     request<{ product: Product }>('PUT', `${store(storeId)}/products/${id}/sold-out`, { soldOut }),
 
+  cashSessions: (storeId: string, from: string, to: string) =>
+    request<{ sessions: StoreCashSession[] }>('GET', `${store(storeId)}/cash-sessions?from=${from}&to=${to}`),
   orders: (storeId: string, from: string, to: string) =>
     request<{ orders: ReportOrder[] }>(
       'GET',
