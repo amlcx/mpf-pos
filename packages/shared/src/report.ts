@@ -1,4 +1,4 @@
-import type { ReportOrder } from './schemas.ts';
+import type { CashMovement, ReportOrder } from './schemas.ts';
 import { type Cell, dateSerial, xlsx } from './xlsx.ts';
 
 /** Whole local days, both inclusive, as yyyy-mm-dd (what a date input holds). */
@@ -207,4 +207,18 @@ export function ordersXlsx(orders: ReportOrder[], info: ExportInfo): Uint8Array 
     table: rows.length > 0 ? { name: 'TablaPedidos', headerRow } : undefined,
     moneyDecimals: allCents.some((cents) => cents % 100 !== 0),
   });
+}
+
+/**
+ * The cash a drawer should hold: what it was opened with, plus the cash owed
+ * on its completed sales (the same "Efectivo" as `summarize`, so voided sales
+ * add nothing), plus cash put in, minus cash taken out.
+ */
+export function expectedCashCents(
+  openingCents: number,
+  orders: ReportOrder[],
+  movements: Pick<CashMovement, 'kind' | 'amountCents'>[],
+): number {
+  const moved = movements.reduce((sum, m) => sum + (m.kind === 'in' ? m.amountCents : -m.amountCents), 0);
+  return openingCents + summarize(orders).cashCents + moved;
 }

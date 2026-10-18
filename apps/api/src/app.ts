@@ -1,6 +1,7 @@
 import { relative } from 'node:path';
 import { serveStatic } from '@hono/node-server/serve-static';
 import {
+  CashSessionSchema,
   type LoginResponse,
   LoginRequestSchema,
   ProductInputSchema,
@@ -16,6 +17,7 @@ import {
   VERSION_PATTERN,
   VersionSchema,
   VoidOrderSchema,
+  cashSessionProblems,
   isNewerVersion,
   orderProblems,
   verifyPassword,
@@ -28,6 +30,7 @@ import * as v from 'valibot';
 import { SESSION_TTL_SECONDS, type SessionCtx, type TerminalCtx, hashToken } from './auth.ts';
 import type { Sql } from './db.ts';
 import { body, fail, idParam, parse } from './http.ts';
+import { saveCashSession } from './cash.ts';
 import { createManageRoutes } from './manage.ts';
 import { submitOrder, voidOrder } from './orders.ts';
 import { createReleaseRoutes } from './releases.ts';
@@ -192,6 +195,20 @@ export function createApp(deps: AppDeps) {
     const result = await submitOrder(sql, c.var.terminal, order, stockPolicy);
     if (!result.ok) return c.json({ error: 'insufficient_stock', items: result.items }, 409);
     return c.json(result.response);
+  });
+
+  /**
+   * The register's cash drawer, whole, every time. Like orders, it needs no
+   * online login: drawers are opened and closed offline too.
+   */
+  app.put('/cash-sessions/:id', async (c) => {
+    const session = await body(c, CashSessionSchema);
+    if (session.id !== idParam(c)) fail(400, 'id_mismatch');
+    const problems = cashSessionProblems(session);
+    if (problems.length > 0) fail(400, 'invalid_cash_session', { problems });
+    const result = await saveCashSession(sql, c.var.terminal, session);
+    if (result === 'conflict') fail(409, 'cash_session_conflict');
+    return c.json({ status: result });
   });
 
   // Cashiers void too: the reason is mandatory and the session says who did it.
