@@ -28,6 +28,8 @@ export function buildOrder(input: {
   taxRateBps: number;
   taxIncluded: boolean;
   discountKind?: DiscountKind | null;
+  /** The drawer open on this register, which the sale's cash goes into. */
+  cashSessionId?: string | null;
   now?: Date;
 }): Order {
   const now = input.now ?? new Date();
@@ -56,6 +58,7 @@ export function buildOrder(input: {
     taxRateBps: input.taxRateBps,
     taxIncluded: input.taxIncluded,
     discountKind,
+    cashSessionId: input.cashSessionId ?? null,
     ...computeTotals(
       lineTotals,
       input.taxRateBps,

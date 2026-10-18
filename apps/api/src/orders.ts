@@ -52,6 +52,7 @@ export async function submitOrder(
           taxCents: order.taxCents,
           totalCents: order.totalCents,
           createdAt: order.createdAt,
+          cashSessionId: order.cashSessionId,
         })}
         on conflict (id) do nothing
         returning id`;

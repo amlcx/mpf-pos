@@ -1,4 +1,5 @@
 import * as v from 'valibot';
+import { DENOMINATIONS } from './cash.ts';
 import { VERSION_PATTERN } from './version.ts';
 
 export const PAYMENT_METHODS = ['cash', 'digital'] as const;
@@ -98,6 +99,8 @@ export const OrderSchema = v.object({
   discountKind: v.optional(v.nullable(v.picklist(DISCOUNT_KINDS)), null),
   /** What came off the sum of the lines, before tax was worked out. */
   discountCents: v.optional(Cents, 0),
+  /** The drawer open when it was sold. Registers older than drawers send none. */
+  cashSessionId: v.optional(v.nullable(Id), null),
   subtotalCents: Cents,
   taxCents: Cents,
   totalCents: Cents,
@@ -328,3 +331,53 @@ export interface UpdateManifest {
   url: string;
   signature: string;
 }
+
+// ------------------------------------------------------------ cash drawer
+
+export const CASH_MOVEMENT_KINDS = ['in', 'out'] as const;
+
+const Denomination = v.picklist(DENOMINATIONS.map((d) => String(d.cents)));
+const Pieces = v.pipe(v.number(), v.safeInteger(), v.minValue(0), v.maxValue(100_000));
+/** Pieces per denomination, keyed by its value in cents. */
+export const CashCountSchema = v.record(Denomination, Pieces);
+
+export const CashMovementSchema = v.object({
+  id: Id,
+  /** in: cash put into the drawer (more change). out: taken out (to the safe, a small expense). */
+  kind: v.picklist(CASH_MOVEMENT_KINDS),
+  amountCents: v.pipe(v.number(), v.safeInteger(), v.minValue(1)),
+  reason: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(300)),
+  userId: Id,
+  createdAt: Timestamp,
+});
+export type CashMovement = v.InferOutput<typeof CashMovementSchema>;
+
+export const CashClosingSchema = v.object({
+  closedBy: Id,
+  closedAt: Timestamp,
+  count: CashCountSchema,
+  countedCents: Cents,
+  /** What the register worked out the drawer should hold, when it was closed. */
+  expectedCents: v.pipe(v.number(), v.safeInteger()),
+  /** Required when counted and expected differ. */
+  note: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(300)), ''),
+});
+export type CashClosing = v.InferOutput<typeof CashClosingSchema>;
+
+/**
+ * A register's drawer for one business day, as the register sends it: the
+ * whole thing every time (PUT), so retrying is always safe. Opening and
+ * closing never change once the server has them; movements only add up.
+ */
+export const CashSessionSchema = v.object({
+  /** Generated on the register (UUIDv7). */
+  id: Id,
+  businessDate: v.pipe(v.string(), v.isoDate()),
+  openedBy: Id,
+  openedAt: Timestamp,
+  openingCount: CashCountSchema,
+  openingCents: Cents,
+  movements: v.pipe(v.array(CashMovementSchema), v.maxLength(500)),
+  closing: v.nullable(CashClosingSchema),
+});
+export type CashSession = v.InferOutput<typeof CashSessionSchema>;

@@ -3,6 +3,10 @@ import {
   type ReportOrder,
   addDays,
   buildOrder,
+  businessDate,
+  cashSessionProblems,
+  countCents,
+  expectedCashCents,
   ordersCsv,
   ordersXlsx,
   presets,
@@ -142,5 +146,60 @@ describe('reports', () => {
     expect(new Date(to)).toEqual(new Date(2026, 9, 8));
     expect(validRange({ from: '2026-10-08', to: '2026-10-07' })).toBe(false);
     expect(validRange({ from: '', to: '2026-10-07' })).toBe(false);
+  });
+});
+
+describe('cash drawer', () => {
+  it('adds up a count of bills and coins', () => {
+    expect(countCents({ '10000000': 1, '2000000': 2, '50000': 3, '5000': 1 })).toBe(10_000_000 + 4_000_000 + 150_000 + 5_000);
+    expect(countCents({})).toBe(0);
+  });
+
+  it('starts the business day at 5:00, not at midnight', () => {
+    expect(businessDate(new Date(2026, 9, 7, 23, 59))).toBe('2026-10-07');
+    expect(businessDate(new Date(2026, 9, 8, 0, 30))).toBe('2026-10-07');
+    expect(businessDate(new Date(2026, 9, 8, 4, 59))).toBe('2026-10-07');
+    expect(businessDate(new Date(2026, 9, 8, 5, 0))).toBe('2026-10-08');
+  });
+
+  it('expects the opening, plus cash sales that stand, plus cash in, minus cash out', () => {
+    const sold = order([[flan, 'Flan', 1_200_000, 2]], 1_000_000); // 10.000 cash, 14.000 digital
+    const voided = order([[flan, 'Flan', 1_200_000, 1]], 1_200_000, 'voided');
+    const movements = [
+      { kind: 'in' as const, amountCents: 500_000 },
+      { kind: 'out' as const, amountCents: 2_000_000 },
+    ];
+    expect(expectedCashCents(5_000_000, [sold, voided], movements)).toBe(5_000_000 + 1_000_000 + 500_000 - 2_000_000);
+  });
+
+  it('refuses drawers whose totals do not match their counts', () => {
+    const base = {
+      id: uuidv7(),
+      businessDate: '2026-10-07',
+      openedBy: uuidv7(),
+      openedAt: '2026-10-07T13:00:00.000Z',
+      openingCount: { '5000000': 1 },
+      openingCents: 5_000_000,
+      movements: [],
+      closing: null,
+    };
+    expect(cashSessionProblems(base)).toEqual([]);
+    expect(cashSessionProblems({ ...base, openingCents: 4_000_000 })).toEqual(['opening total does not match its count']);
+    const closing = {
+      closedBy: base.openedBy,
+      closedAt: '2026-10-08T01:00:00.000Z',
+      count: { '5000000': 1 },
+      countedCents: 5_000_000,
+      expectedCents: 5_000_000,
+      note: '',
+    };
+    expect(cashSessionProblems({ ...base, closing })).toEqual([]);
+    expect(cashSessionProblems({ ...base, closing: { ...closing, expectedCents: 5_200_000 } })).toEqual([
+      'a closing that does not match needs a note',
+    ]);
+    expect(cashSessionProblems({ ...base, closing: { ...closing, expectedCents: 5_200_000, note: 'Faltan 2.000' } })).toEqual([]);
+    expect(cashSessionProblems({ ...base, closing: { ...closing, countedCents: 1, note: 'x' } })).toEqual([
+      'closing total does not match its count',
+    ]);
   });
 });

@@ -99,6 +99,21 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
   order containing one is rejected like any other shortage (409, available 0);
   an `accept` order never is. The flag is ignored for tracked products.
 
+### Cash drawer
+- Each register has one drawer per business day. A business day starts at
+  5:00 local time (`businessDate`), so a shift past midnight stays in its day.
+- `countCents`, `cashSessionProblems` and `expectedCashCents` in
+  `packages/shared` are the only definition of a drawer's arithmetic. Expected
+  cash = opening count + the cash owed on the drawer's completed sales (the
+  report's "Efectivo", so voids add nothing) + cash put in − cash taken out.
+- The register sends the whole drawer with `PUT /cash-sessions/:id` every
+  time. The opening and the closing are written once and must match after
+  that; movements are only added, by id. Anything else is a 409.
+- The closing stores the expected amount the register worked out, as a
+  snapshot like an order's prices. A difference needs a note.
+- Each order records its drawer (`cash_session_id`). It has no foreign key
+  on purpose: an online sale is sent at once and can arrive before its drawer.
+
 ### Offline and sync
 - The register writes to its local SQLite first and treats the server as
   something that may not answer. Screens read local data only.
