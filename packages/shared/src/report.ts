@@ -53,7 +53,61 @@ export interface Summary {
   /** Completed orders sold with a discount, and how much the discounts took off. */
   discountCount: number;
   discountCents: number;
-  topProducts: { name: string; quantity: number; totalCents: number }[];
+  topProducts: ProductSales[];
+}
+
+/** One product over a set of orders: units sold and what was charged for them. */
+export interface ProductSales {
+  productId: string;
+  name: string;
+  quantity: number;
+  /** Its share of what customers paid: after any discount, with tax as charged. */
+  totalCents: number;
+}
+
+/**
+ * What each line of an order brought in: the order's total split in
+ * proportion to its lines' full prices. A discount takes the same share off
+ * every line (a loyalty card halves them all), so this is the line at what
+ * was charged. Rounding is settled by largest remainder, so the shares
+ * always add up to exactly the order's total.
+ */
+function chargedLineCents(order: ReportOrder): number[] {
+  const full = order.lines.map((l) => BigInt(l.lineTotalCents));
+  const sum = full.reduce((a, b) => a + b, 0n);
+  if (sum === 0n) return full.map(() => 0);
+  const total = BigInt(order.totalCents);
+  const shares = full.map((line) => (total * line) / sum);
+  const remainders = full.map((line, i) => ({ i, rest: (total * line) % sum }));
+  let left = Number(total - shares.reduce((a, b) => a + b, 0n));
+  remainders.sort((a, b) => (b.rest > a.rest ? 1 : b.rest < a.rest ? -1 : a.i - b.i));
+  for (const { i } of remainders) {
+    if (left-- <= 0) break;
+    shares[i]! += 1n;
+  }
+  return shares.map(Number);
+}
+
+/**
+ * Units and money per product over completed orders, most sold first. The
+ * money adds up to the sales of `summarize`: discounted orders count at what
+ * was charged, voided ones not at all.
+ */
+export function productSales(orders: ReportOrder[]): ProductSales[] {
+  const products = new Map<string, ProductSales>();
+  for (const order of orders) {
+    if (order.status === 'voided') continue;
+    const charged = chargedLineCents(order);
+    order.lines.forEach((line, i) => {
+      const entry = products.get(line.productId) ?? { productId: line.productId, name: line.name, quantity: 0, totalCents: 0 };
+      entry.quantity += line.quantity;
+      entry.totalCents += charged[i]!;
+      products.set(line.productId, entry);
+    });
+  }
+  return [...products.values()].sort(
+    (a, b) => b.quantity - a.quantity || b.totalCents - a.totalCents || a.name.localeCompare(b.name, 'es'),
+  );
 }
 
 export function summarize(orders: ReportOrder[], top = 5): Summary {
@@ -61,7 +115,6 @@ export function summarize(orders: ReportOrder[], top = 5): Summary {
     orderCount: 0, salesCents: 0, taxCents: 0, averageCents: 0, cashCents: 0, digitalCents: 0,
     itemCount: 0, voidedCount: 0, voidedCents: 0, discountCount: 0, discountCents: 0, topProducts: [],
   };
-  const products = new Map<string, Summary['topProducts'][number]>();
   for (const order of orders) {
     if (order.status === 'voided') {
       summary.voidedCount += 1;
@@ -79,18 +132,10 @@ export function summarize(orders: ReportOrder[], top = 5): Summary {
       if (p.method === 'cash') summary.cashCents += p.amountCents;
       else summary.digitalCents += p.amountCents;
     }
-    for (const line of order.lines) {
-      summary.itemCount += line.quantity;
-      const entry = products.get(line.productId) ?? { name: line.name, quantity: 0, totalCents: 0 };
-      entry.quantity += line.quantity;
-      entry.totalCents += line.lineTotalCents;
-      products.set(line.productId, entry);
-    }
+    for (const line of order.lines) summary.itemCount += line.quantity;
   }
   if (summary.orderCount > 0) summary.averageCents = Math.round(summary.salesCents / summary.orderCount);
-  summary.topProducts = [...products.values()]
-    .sort((a, b) => b.quantity - a.quantity || b.totalCents - a.totalCents)
-    .slice(0, top);
+  summary.topProducts = productSales(orders).slice(0, top);
   return summary;
 }
 
@@ -157,6 +202,23 @@ export interface ExportInfo {
   exportedAt?: Date;
 }
 
+// A spreadsheet holds amounts in whole currency units, not minor ones.
+const money = (cents: number, style: 'money' | 'moneyBold' = 'money'): Cell => ({ value: cents / 100, style });
+
+/** The rows every export starts with: business, what it is, which days, when it was made. */
+function exportHeading(title: string, info: ExportInfo): Cell[][] {
+  const exportedAt = info.exportedAt ?? new Date();
+  const day = (iso: string) => iso.split('-').reverse().join('/');
+  const { from, to } = info.range;
+  return [
+    [{ value: info.businessName, style: 'title' }],
+    [{ value: title, style: 'bold' }],
+    ['Fechas', from === to ? day(from) : `${day(from)} a ${day(to)}`],
+    ['Exportado', `${day(localDate(exportedAt))} ${pad(exportedAt.getHours())}:${pad(exportedAt.getMinutes())}`],
+    [],
+  ];
+}
+
 /**
  * The same orders as an Excel file: who and what the export covers, the
  * figures of `summarize`, then every order in a table that can be filtered.
@@ -164,18 +226,8 @@ export interface ExportInfo {
 export function ordersXlsx(orders: ReportOrder[], info: ExportInfo): Uint8Array {
   const summary = summarize(orders);
   const rows = orders.map(exportRow);
-  const exportedAt = info.exportedAt ?? new Date();
-  const day = (iso: string) => iso.split('-').reverse().join('/');
-  // A spreadsheet holds amounts in whole currency units, not minor ones.
-  const money = (cents: number, style: 'money' | 'moneyBold' = 'money'): Cell => ({ value: cents / 100, style });
-  const { from, to } = info.range;
-
   const sheet: Cell[][] = [
-    [{ value: info.businessName, style: 'title' }],
-    [{ value: `Ventas · ${info.storeName}`, style: 'bold' }],
-    ['Fechas', from === to ? day(from) : `${day(from)} a ${day(to)}`],
-    ['Exportado', `${day(localDate(exportedAt))} ${pad(exportedAt.getHours())}:${pad(exportedAt.getMinutes())}`],
-    [],
+    ...exportHeading(`Ventas · ${info.storeName}`, info),
     [{ value: 'Ventas', style: 'bold' }, money(summary.salesCents, 'moneyBold')],
     ['Pedidos', summary.orderCount],
     ['Efectivo', money(summary.cashCents)],
@@ -206,6 +258,39 @@ export function ordersXlsx(orders: ReportOrder[], info: ExportInfo): Uint8Array 
     // A table needs at least one line under its headings.
     table: rows.length > 0 ? { name: 'TablaPedidos', headerRow } : undefined,
     moneyDecimals: allCents.some((cents) => cents % 100 !== 0),
+  });
+}
+
+/**
+ * Sales per product as an Excel file: the same heading as `ordersXlsx`, then
+ * one row per product (units, money) in a table that can be filtered, and a
+ * total that matches the sales figure.
+ */
+export function productsXlsx(orders: ReportOrder[], info: ExportInfo): Uint8Array {
+  const products = productSales(orders);
+  const summary = summarize(orders);
+  const sheet: Cell[][] = [
+    ...exportHeading(`Ventas por producto · ${info.storeName}`, info),
+    [{ value: 'Ventas', style: 'bold' }, money(summary.salesCents, 'moneyBold')],
+    ['Productos vendidos', summary.itemCount],
+    ['Pedidos con tarjeta', summary.discountCount],
+    ['Descuento tarjetas', money(summary.discountCents)],
+    ['Las ventas de cada producto son lo cobrado: con el descuento de tarjeta e impuesto incluido. Los pedidos anulados no cuentan.'],
+    [],
+  ];
+  const headerRow = sheet.length;
+  sheet.push(['Producto', 'Unidades', 'Ventas']);
+  for (const p of products) sheet.push([p.name, p.quantity, money(p.totalCents)]);
+  if (products.length > 0) {
+    // Below the table, not in it, so filtering the table leaves it alone.
+    sheet.push([], [{ value: 'Total', style: 'bold' }, { value: summary.itemCount, style: 'bold' }, money(summary.salesCents, 'moneyBold')]);
+  }
+  return xlsx({
+    name: 'Productos',
+    rows: sheet,
+    widths: [36, 12, 16],
+    table: products.length > 0 ? { name: 'TablaProductos', headerRow, lastRow: headerRow + products.length } : undefined,
+    moneyDecimals: products.some((p) => p.totalCents % 100 !== 0),
   });
 }
 

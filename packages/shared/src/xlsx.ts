@@ -13,10 +13,11 @@ export interface Sheet {
   /** Column widths in characters, from column A. */
   widths?: number[];
   /**
-   * Rows from `headerRow` (index into `rows`) to the last one form a table:
-   * that row holds the column names, which must be distinct, non-empty texts.
+   * Rows from `headerRow` (index into `rows`) to `lastRow` (default: the
+   * last one) form a table: `headerRow` holds the column names, which must
+   * be distinct, non-empty texts.
    */
-  table?: { name: string; headerRow: number };
+  table?: { name: string; headerRow: number; lastRow?: number };
   /** Show two decimals in money cells instead of none. */
   moneyDecimals?: boolean;
 }
@@ -146,7 +147,7 @@ export function xlsx(sheet: Sheet): Uint8Array {
 
   if (table) {
     const header = sheet.rows[table.headerRow]!;
-    const ref = `A${table.headerRow + 1}:${columnName(header.length - 1)}${sheet.rows.length}`;
+    const ref = `A${table.headerRow + 1}:${columnName(header.length - 1)}${(table.lastRow ?? sheet.rows.length - 1) + 1}`;
     const columns = header.map((name, i) => `<tableColumn id="${i + 1}" name="${esc(String(name))}"/>`);
     files.push(
       ['xl/worksheets/_rels/sheet1.xml.rels', rels([['table', '../tables/table1.xml']])],
