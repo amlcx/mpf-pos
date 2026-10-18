@@ -28,6 +28,8 @@ describe('ticket', () => {
       expect(text).toContain('A-0042');
       expect(text).toContain('2026-10-07 12:30');
       expect(text).toMatch(/TOTAL +42$/m);
+      // 2 pies and 1 long-named dessert: units, not lines.
+      expect(text).toMatch(/^Total productos: 3$/m);
       expect(text).toMatch(/Efectivo +50$/m);
       expect(text).toMatch(/Digital +22$/m);
       expect(text).toMatch(/Cambio +30$/m);

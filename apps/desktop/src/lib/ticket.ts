@@ -46,7 +46,9 @@ export function ticketRows({ businessName, storeName, cashierName, order, column
   for (const line of order.lines) {
     rows.push({ text: pair(`${line.quantity} x ${line.name}`, money(line.lineTotalCents), columns) });
   }
-  rows.push({ text: rule });
+  // Units, not lines: two flans and a brownie are 3.
+  const units = order.lines.reduce((sum, line) => sum + line.quantity, 0);
+  rows.push({ text: rule }, { text: `Total productos: ${units}` });
   if (order.discountKind) {
     const label = `${DISCOUNT_LABEL[order.discountKind]} ${DISCOUNT_BPS[order.discountKind] / 100}%`;
     rows.push({ text: pair(label, money(-order.discountCents), columns) });
