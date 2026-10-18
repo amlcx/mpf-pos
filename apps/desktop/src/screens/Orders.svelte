@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AlertDialog, Pagination, ToggleGroup } from 'bits-ui';
+  import { AlertDialog, Pagination, Toggle, ToggleGroup } from 'bits-ui';
   import {
     type DateRange,
     type ReportOrder,
@@ -51,6 +51,8 @@
 
   const symbol = $derived(app.context?.store.currencySymbol ?? '');
   const money = (cents: number) => formatCents(cents, symbol);
+  // Totals for anyone looking in from outside: same length whatever the amount.
+  const total = (cents: number) => (app.showAmounts ? money(cents) : `${symbol}••••••`);
   const summary = $derived(summarize(orders));
   const preview = $derived(selected ? ticketPreview(selected) : '');
   const SYNC_LABEL = { submitting: 'Enviando', pending: 'Por sincronizar', synced: 'Sincronizado', failed: 'Con error' };
@@ -183,14 +185,28 @@
 
     <div class="stats">
       <div class="stat main">
-        <span>Ventas</span>
-        <strong>{money(summary.salesCents)}</strong>
+        <div class="label">
+          <span>Ventas</span>
+          <Toggle.Root
+            class="icon"
+            bind:pressed={app.showAmounts}
+            aria-label={app.showAmounts ? 'Ocultar valores' : 'Mostrar valores'}
+            title={app.showAmounts ? 'Ocultar valores' : 'Mostrar valores'}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+              <circle cx="12" cy="12" r="3" />
+              {#if !app.showAmounts}<path d="M3 3l18 18" />{/if}
+            </svg>
+          </Toggle.Root>
+        </div>
+        <strong>{total(summary.salesCents)}</strong>
         <small>
-          {plural(summary.orderCount, 'pedido', 'pedidos')} · promedio {money(summary.averageCents)}
+          {plural(summary.orderCount, 'pedido', 'pedidos')} · promedio {total(summary.averageCents)}
         </small>
       </div>
-      <div class="stat"><span>Efectivo</span><strong>{money(summary.cashCents)}</strong></div>
-      <div class="stat"><span>Digital</span><strong>{money(summary.digitalCents)}</strong></div>
+      <div class="stat"><span>Efectivo</span><strong>{total(summary.cashCents)}</strong></div>
+      <div class="stat"><span>Digital</span><strong>{total(summary.digitalCents)}</strong></div>
       <div class="stat">
         <span>Productos</span>
         <strong>{summary.itemCount}</strong>
@@ -199,13 +215,13 @@
       <div class="stat">
         <span>Anulados</span>
         <strong>{summary.voidedCount}</strong>
-        <small>{money(summary.voidedCents)}</small>
+        <small>{total(summary.voidedCents)}</small>
       </div>
       {#if summary.discountCount > 0}
         <div class="stat">
           <span>Tarjetas</span>
           <strong>{summary.discountCount}</strong>
-          <small>{money(summary.discountCents)} de descuento</small>
+          <small>{total(summary.discountCents)} de descuento</small>
         </div>
       {/if}
     </div>
@@ -301,7 +317,7 @@
       {#if summary.topProducts.length > 0}
         <ol class="top">
           {#each summary.topProducts as p}
-            <li><span>{p.name}</span><strong>{p.quantity}</strong><span class="muted">{money(p.totalCents)}</span></li>
+            <li><span>{p.name}</span><strong>{p.quantity}</strong><span class="muted">{total(p.totalCents)}</span></li>
           {/each}
         </ol>
       {:else}
