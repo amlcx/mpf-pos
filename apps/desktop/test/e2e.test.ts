@@ -4,7 +4,7 @@ import { type World, call, createWorld, stockOf } from '@mpf/api/testing';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { ApiClient, type FetchLike } from '../src/lib/api.ts';
 import { login } from '../src/lib/auth.ts';
-import { checkout, checkoutInProgress } from '../src/lib/checkout.ts';
+import { cartFromOrder, checkout, checkoutInProgress } from '../src/lib/checkout.ts';
 import { type LocalDb, migrateLocal } from '../src/lib/local-db.ts';
 import { countBySyncStatus, getOrder, listProducts, loadContext } from '../src/lib/repo.ts';
 import { type SyncDeps, syncOnce } from '../src/lib/sync.ts';
@@ -208,6 +208,39 @@ describe('terminals against the server', () => {
     expect(await a.available('brownie')).toBe(7);
     const [row] = await w.sql`select voided_by, void_reason from orders where id = ${result.order.id}`;
     expect(row).toEqual({ voidedBy: w.cashierId, voidReason: 'rang it up twice' });
+  });
+
+  it('a sale voided for the wrong payment method is charged again as it was', async () => {
+    const stockBefore = await stockOf(w, 'brownie');
+    const first = await a.sell({ brownie: 2 }); // part cash, part digital
+    if (!first.ok) throw new Error('unreachable');
+    // The catalog moves on before the cashier notices the mistake.
+    await w.sql`update products set price_cents = 1500 where id = ${w.products.brownie}`;
+    await syncOnce(a);
+
+    await a.api.voidOrder(first.order.id, 'Cambio de método de pago'); // still logged in as the cashier
+    await syncOnce(a);
+    const cart = cartFromOrder(first.order);
+    expect(cart).toEqual([{ productId: w.products.brownie, name: 'Brownie', unitPriceCents: 1000, quantity: 2 }]);
+    const again = await checkout(a, {
+      cart,
+      payments: [{ method: 'digital', amountCents: first.order.totalCents }],
+      cashierId: w.cashierId,
+      online: true,
+    });
+    expect(again).toMatchObject({ ok: true, synced: true, order: { totalCents: first.order.totalCents } });
+    if (!again.ok) throw new Error('unreachable');
+    expect(again.order.ticketSeq).toBeGreaterThan(first.order.ticketSeq);
+
+    const rows = await w.sql<{ id: string; status: string }[]>`
+      select id, status from orders where id in ${w.sql([first.order.id, again.order.id])} order by ticket_seq`;
+    expect(rows.map((r) => r.status)).toEqual(['voided', 'completed']);
+    const payments = await w.sql`select method, amount_cents from payments where order_id = ${again.order.id}`;
+    expect(payments).toEqual([{ method: 'digital', amountCents: first.order.totalCents }]);
+    // Sold once in the end: the void put back what the first sale took.
+    expect(await stockOf(w, 'brownie')).toBe(stockBefore - 2);
+    await w.sql`update products set price_cents = 1000 where id = ${w.products.brownie}`;
+    await syncOnce(a);
   });
 
   it('a product marked sold out on one terminal stops selling on the other', async () => {

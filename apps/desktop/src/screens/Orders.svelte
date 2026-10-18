@@ -23,6 +23,7 @@
     resolveConflict,
     retryFailedOrders,
     ticketPreview,
+    voidAndResell,
     voidOrder,
   } from '../lib/state.svelte.ts';
 
@@ -111,15 +112,29 @@
     message = (await printTicket(selected)) ?? (app.config?.printerTarget ? 'Enviado a la impresora.' : 'No hay impresora configurada.');
   }
 
-  // The order being voided, while the cashier types the reason.
-  let voiding = $state<{ orderId: string; ticketNumber: string } | null>(null);
+  // The order being voided, while the cashier types the reason. `order` is
+  // set when it can also be charged again: one of this register's own sales.
+  let voiding = $state<{ orderId: string; ticketNumber: string; order?: ReportOrder } | null>(null);
   let voidReason = $state('');
   let voidBusy = $state(false);
   let reasonInput = $state<HTMLInputElement | null>(null);
 
-  function askVoid(orderId: string, ticketNumber: string) {
-    voiding = { orderId, ticketNumber };
+  function askVoid(orderId: string, ticketNumber: string, order?: ReportOrder) {
+    voiding = { orderId, ticketNumber, order };
     voidReason = '';
+  }
+
+  /** Voids, then the app moves to the sale screen with the same items to charge. */
+  async function voidAndChangePayment() {
+    if (!voiding?.order || voidBusy) return;
+    voidBusy = true;
+    const error = await voidAndResell($state.snapshot(voiding.order), voidReason.trim() || 'Cambio de método de pago');
+    voidBusy = false;
+    voiding = null;
+    if (error) {
+      message = error;
+      await reload();
+    }
   }
 
   async function confirmVoid(event: SubmitEvent) {
@@ -277,7 +292,7 @@
       <div class="row">
         <button onclick={reprint}>Reimprimir</button>
         {#if canVoid(selected)}
-          <button onclick={() => askVoid(selected!.id, selected!.ticketNumber)}>Anular</button>
+          <button onclick={() => askVoid(selected!.id, selected!.ticketNumber, local(selected!) ? selected! : undefined)}>Anular</button>
         {/if}
         <button onclick={() => (selected = null)}>Cerrar</button>
       </div>
@@ -310,10 +325,19 @@
         </AlertDialog.Title>
         <AlertDialog.Description class="muted">
           Sus productos vuelven a las existencias. No se puede deshacer.
+          {#if voiding?.order}
+            Si solo cambia el método de pago, usa «Anular y cambiar método de pago»: los mismos productos, al mismo
+            precio, pasan a la pantalla de venta para cobrarlos de nuevo.
+          {/if}
         </AlertDialog.Description>
         <label>Motivo <input bind:this={reasonInput} bind:value={voidReason} required maxlength="300" /></label>
         <div class="row">
           <AlertDialog.Cancel type="button" disabled={voidBusy}>Cancelar</AlertDialog.Cancel>
+          {#if voiding?.order}
+            <button type="button" disabled={voidBusy} onclick={voidAndChangePayment}>
+              Anular y cambiar método de pago
+            </button>
+          {/if}
           <AlertDialog.Action type="submit" class="primary" disabled={!voidReason.trim() || voidBusy}>
             Anular pedido
           </AlertDialog.Action>

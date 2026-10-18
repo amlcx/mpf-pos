@@ -12,7 +12,7 @@ import {
 } from '@mpf/shared';
 import { ApiClient, ApiError, NetworkError } from './api.ts';
 import { type Session, login } from './auth.ts';
-import { type CheckoutResult, checkout, checkoutInProgress } from './checkout.ts';
+import { type CheckoutResult, cartFromOrder, checkout, checkoutInProgress } from './checkout.ts';
 import { migrateLocal } from './local-db.ts';
 import {
   type Context,
@@ -48,7 +48,16 @@ export const app = $state({
   /** A cart has items or the payment dialog is open (set by the sale screen). */
   saleOpen: false,
   update: { status: 'idle' } as UpdateState,
+  /** A voided sale to charge again, waiting for the sale screen to pick it up. */
+  resale: null as Resale | null,
 });
+
+export interface Resale {
+  /** Ticket of the voided sale, to tell the cashier what this cart is. */
+  ticketNumber: string;
+  cart: CartItem[];
+  discountKind: DiscountKind | null;
+}
 
 let api: ApiClient | null = null;
 /** This build's version, sent to the server on every request. */
@@ -234,6 +243,25 @@ export async function voidOrder(id: string, reason: string): Promise<string | nu
   const error = await attempt(() => deps().api.voidOrder(id, reason));
   await syncNow();
   return error;
+}
+
+/**
+ * Voids a sale and puts the same items, at the same prices, back in the cart
+ * so it can be charged again, typically with another payment method. The
+ * charge is a new sale with a new ticket; the void keeps its own reason.
+ */
+export async function voidAndResell(order: ReportOrder, reason: string): Promise<string | null> {
+  const error = await voidOrder(order.id, reason);
+  if (error) return error;
+  app.resale = { ticketNumber: order.ticketNumber, cart: cartFromOrder(order), discountKind: order.discountKind ?? null };
+  return null;
+}
+
+/** Hands the waiting resale to the sale screen, once. */
+export function takeResale(): Resale | null {
+  const resale = app.resale;
+  app.resale = null;
+  return resale;
 }
 
 /** Marks a made-on-demand product as sold out in this store, or available again. */

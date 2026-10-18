@@ -2,7 +2,7 @@
   import { Toggle, ToggleGroup } from 'bits-ui';
   import { type CartItem, type PaymentInput, computeTotals, discountCentsFor, formatCents } from '@mpf/shared';
   import type { LocalOrder, LocalProduct } from '../lib/repo.ts';
-  import { app, printTicket, sell, setSaleOpen, setSoldOut } from '../lib/state.svelte.ts';
+  import { app, printTicket, sell, setSaleOpen, setSoldOut, takeResale } from '../lib/state.svelte.ts';
   import Payment from './Payment.svelte';
 
   let cart = $state<CartItem[]>([]);
@@ -134,6 +134,18 @@
   function clear() {
     cart = [];
     activeId = null;
+    replacing = null;
+  }
+
+  // Coming from "Anular y cambiar método de pago": the voided sale's items are
+  // back in the cart and the payment dialog opens to take the new payment.
+  let replacing = $state<string | null>(null);
+  const resale = takeResale();
+  if (resale) {
+    cart = resale.cart;
+    replacing = resale.ticketNumber;
+    charge();
+    loyalty = resale.discountKind === 'loyalty_card';
   }
 
   async function pay(payments: PaymentInput[]) {
@@ -237,6 +249,9 @@
   <section class="cart">
     {#if notice}
       <p class="notice error">{notice}</p>
+    {/if}
+    {#if replacing}
+      <p class="muted hand">Nuevo cobro del pedido {replacing}, que quedó anulado.</p>
     {/if}
     <ul>
       {#each cart as item (item.productId)}

@@ -70,6 +70,10 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
 - Orders are never deleted or edited in place on the server. A mistake is
   corrected by voiding, which records who, when and why. Cashiers may void
   from a register; the reason is mandatory.
+- A wrong payment method is fixed the same way: "Anular y cambiar método de
+  pago" voids the sale, then charges the same items again as a new sale with
+  a new ticket. `cartFromOrder` keeps the voided sale's names and prices, so
+  catalog edits made since then do not change what the customer pays.
 - Ticket numbers are `<terminal code>-<sequence>`, unique per terminal, never
   reused. The sequence lives on the register; each pull raises it to at least
   the server's last known value so a wiped PC cannot repeat a number.
@@ -230,7 +234,8 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
 - Accented characters on tickets. Windows printing (`pos-native/src/spooler.rs`,
   raw spooler job to the printer named in Setup) is written but has not been
   tried on the stores' Xprinter XP-58IIT yet.
-- Editing an existing order (today: void and re-enter).
+- Editing an existing order (today: void and re-enter; for the payment
+  method alone, "Anular y cambiar método de pago" does both in one step).
 - Export of sales to the ERP.
 - Stock movement history and transfers between stores in the panel.
 - Live push of stock changes (registers poll every 5 s).
