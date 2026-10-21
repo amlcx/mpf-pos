@@ -22,6 +22,14 @@ const setStock = (product: 'flan' | 'brownie', quantity: number) =>
   call(w.app, tokenA(), 'PUT', `/admin/products/${w.products[product]}/stock`, { quantity }, adminSession);
 
 describe('auth and sync', () => {
+  it('compresses responses for clients that accept gzip', async () => {
+    const headers = { Authorization: `Bearer ${tokenA()}`, 'Accept-Encoding': 'gzip' };
+    const res = await w.app.request('/sync/pull', { headers });
+    expect(res.headers.get('Content-Encoding')).toBe('gzip');
+    const body = await new Response(res.body!.pipeThrough(new DecompressionStream('gzip'))).json() as PullResponse;
+    expect(body.products).toEqual((await call<PullResponse>(w.app, tokenA(), 'GET', '/sync/pull')).json.products);
+  });
+
   it('reports its version on /health, without a terminal', async () => {
     expect((await call(w.app, null, 'GET', '/health')).json).toEqual({ ok: true, version: 'dev' });
     const released = createApp({ sql: w.sql, sessionSecret: 'test-secret-test-secret', version: '1.4.0' });

@@ -1,5 +1,6 @@
 import { relative } from 'node:path';
 import { serveStatic } from '@hono/node-server/serve-static';
+import { compress } from 'hono/compress';
 import {
   CashSessionSchema,
   type LoginResponse,
@@ -64,6 +65,9 @@ export function createApp(deps: AppDeps) {
   const app = new Hono<Env>();
 
   app.use(cors({ origin: '*', allowHeaders: ['Authorization', 'Content-Type', 'X-Session', 'X-App-Version'] }));
+  // Reports and pulls are large JSON and stores' links can be slow: gzip
+  // makes them roughly ten times smaller. The proxy in front does not compress.
+  app.use(compress());
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
