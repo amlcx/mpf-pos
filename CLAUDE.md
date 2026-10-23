@@ -234,9 +234,11 @@ Break one of these and money or stock goes wrong. Each has a test; keep it so.
   register, Excel from the panel; `xlsx.ts` is our own minimal writer, so no
   spreadsheet library). Voided orders never count as sales. "Cash" in a report is the cash
   owed (`amountCents`), not the cash handed over. A day means a local
-  calendar day on the register. The register's screen can be seen from the
-  street, so its sales totals start masked (`app.showAmounts`, the eye
-  toggle) and mask again on sign-out.
+  calendar day on the register. Sales totals (summary figures, best sellers)
+  appear in the panel only, never on the register: its screen can be seen
+  from the street and is used by cashiers. The register lists each order
+  with its own total, nothing summed; only an admin logged in online
+  (`canAdmin`) can export them as CSV.
 - The business name is `BUSINESS_NAME` in `packages/brand`, set in Titan One
   (class `brand-name`). The company style guide's fonts: Nunito for text,
   Titan One for the name and headings, Patrick Hand only for small friendly
