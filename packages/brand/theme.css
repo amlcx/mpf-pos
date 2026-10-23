@@ -162,11 +162,6 @@ pre { margin: 0.5rem 0 0; padding: 0.7rem; background: var(--surface); border: 1
 .stat small { color: var(--muted); }
 .stat.main { grid-column: span 2; background: var(--brand-soft); border-color: var(--brand); }
 .stat.main strong { font-size: 1.9rem; }
-.stat .label { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
-/* An icon-only toggle (the eye that shows or hides amounts): no pressed fill. */
-button.icon, button.icon[data-state='on'] { display: inline-grid; place-items: center; padding: 0.2rem; background: transparent; border-color: transparent; color: var(--brand-strong); }
-button.icon:hover:not(:disabled) { background: var(--surface); }
-button.icon svg { width: 1.25rem; height: 1.25rem; }
 .top { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.35rem; }
 .top li { display: flex; gap: 0.6rem; align-items: baseline; padding-bottom: 0.35rem; border-bottom: 1px solid var(--line); }
 .top li span:first-child { flex: 1; font-family: 'Patrick Hand', 'Nunito', system-ui, sans-serif; font-size: 1.15em; }
